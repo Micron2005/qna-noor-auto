@@ -1,220 +1,157 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { Button, Card, CardHeader } from "@/components/ui";
-import { runIdentifixImport, type IdentifixImportSummary } from "./actions";
+import {
+  runCustomersImport,
+  runVehiclesImport,
+  runInvoicesImport,
+  wipeOrphans,
+  type StepResult,
+} from "./actions";
 
 export function IdentifixImportClient() {
-  const [state, action, isPending] = useActionState<
-    IdentifixImportSummary | null,
-    FormData
-  >(runIdentifixImport, null);
-
-  const [aName, setANm] = useState<string>("");
-  const [bName, setBNm] = useState<string>("");
-  const [cName, setCNm] = useState<string>("");
-
   return (
-    <form action={action}>
-      <Card className="mb-4">
-        <CardHeader title="1. Upload files" />
-        <div className="p-6 space-y-4">
-          <FileRow
-            id="customersCsv"
-            label="Customers (A)"
-            hint="CSV with columns: Prefix, FirstName, LastName, Suffix, PhoneNo1, Email1, Address1, Address2, IsCompany, Id, …"
-            onName={setANm}
-            name={aName}
-          />
-          <FileRow
-            id="vehiclesCsv"
-            label="Vehicles (B)"
-            hint="CSV with columns: VIN, LicensePlate, LicenseState, Year, Make, Model, Engine, Color, CustomerId, Id, …"
-            onName={setBNm}
-            name={bName}
-          />
-          <FileRow
-            id="invoicesCsv"
-            label="Invoices (C) — optional"
-            hint="Multi-row per invoice: Invoice:, Date:, Customer:, Vin:, Vehicle:, line items, totals. Takes longer."
-            onName={setCNm}
-            name={cName}
-          />
-        </div>
-      </Card>
-
-      <Card className="mb-4">
-        <CardHeader title="2. Cleanup options" />
-        <div className="p-6 space-y-3 text-sm text-zinc-700">
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              name="wipeOrphans"
-              className="mt-0.5"
-              defaultChecked
-            />
-            <span>
-              <strong>Delete blank-name customers first.</strong> Removes any
-              customer records with no name and no linked vehicles / ROs —
-              usually leftovers from a failed prior import.
-            </span>
-          </label>
-          <p className="text-xs text-zinc-500">
-            Records that match by Identifix Id (stored in our{" "}
-            <code className="bg-zinc-100 px-1 rounded">externalId</code> field)
-            are <strong>updated</strong> in place, not duplicated. Safe to
-            re-run.
-          </p>
-        </div>
-      </Card>
-
-      <Card className="mb-4">
-        <CardHeader title="3. Run" />
-        <div className="p-6">
-          <Button disabled={isPending} type="submit">
-            {isPending ? "Importing…" : "Run import"}
-          </Button>
-          <p className="mt-2 text-xs text-zinc-500">
-            A full import of ~730 customers, ~4,700 vehicles, and ~3,100
-            invoices can take 30-90 seconds. Stay on this page.
-          </p>
-        </div>
-      </Card>
-
-      {state && <SummaryCard summary={state} />}
-    </form>
-  );
-}
-
-function FileRow({
-  id,
-  label,
-  hint,
-  onName,
-  name,
-}: {
-  id: string;
-  label: string;
-  hint: string;
-  onName: (n: string) => void;
-  name: string;
-}) {
-  return (
-    <div>
-      <label
-        htmlFor={id}
-        className="block text-sm font-medium text-zinc-900 mb-1"
-      >
-        {label}
-      </label>
-      <input
-        id={id}
-        name={id}
-        type="file"
-        accept=".csv,text/csv"
-        className="text-sm"
-        onChange={(e) => onName(e.target.files?.[0]?.name ?? "")}
+    <>
+      <WipeCard />
+      <StepCard
+        step="1"
+        title="Customers (A.csv)"
+        fileField="customersCsv"
+        hint="One row per customer. Columns include Prefix, FirstName, LastName, Suffix, PhoneNo1, Email1, Address1, IsCompany, Id."
+        action={runCustomersImport}
       />
-      {name && (
-        <p className="mt-1 text-xs text-zinc-600">
-          Loaded <strong>{name}</strong>
-        </p>
-      )}
-      <p className="mt-1 text-xs text-zinc-500">{hint}</p>
-    </div>
+      <StepCard
+        step="2"
+        title="Vehicles (B.csv)"
+        fileField="vehiclesCsv"
+        hint="One row per vehicle. Columns include VIN, LicensePlate, Year, Make, Model, Engine, CustomerId, Id. Run AFTER customers."
+        action={runVehiclesImport}
+      />
+      <StepCard
+        step="3"
+        title="Invoice history (C.csv) — optional"
+        fileField="invoicesCsv"
+        hint="Multi-row per invoice. Matched to vehicles by VIN. Can take a minute. Run AFTER vehicles."
+        action={runInvoicesImport}
+      />
+    </>
   );
 }
 
-function SummaryCard({ summary }: { summary: IdentifixImportSummary }) {
+function WipeCard() {
+  const [pending, startTransition] = useTransition();
+  const [result, setResult] = useState<StepResult | null>(null);
   return (
-    <Card>
-      <CardHeader title={summary.ok ? "Results" : "Error"} />
-      <div className="p-6 space-y-3 text-sm">
-        {summary.message && (
-          <p className={summary.ok ? "text-green-700" : "text-red-700"}>
-            {summary.message}
-          </p>
-        )}
-        {summary.cleanup.orphanCustomersDeleted > 0 && (
-          <p className="text-zinc-700">
-            Deleted{" "}
-            <strong>{summary.cleanup.orphanCustomersDeleted}</strong> blank
-            customer records from a prior failed import.
-          </p>
-        )}
-        <ResultRow
-          label="Customers"
-          parts={[
-            `${summary.customers.imported} new`,
-            `${summary.customers.updated} updated`,
-          ]}
-        />
-        <ResultRow
-          label="Vehicles"
-          parts={[
-            `${summary.vehicles.imported} new`,
-            `${summary.vehicles.updated} updated`,
-            summary.vehicles.orphans > 0
-              ? `${summary.vehicles.orphans} skipped (customer not found)`
-              : null,
-          ]}
-        />
-        <ResultRow
-          label="Invoices"
-          parts={[
-            `${summary.invoices.imported} imported`,
-            summary.invoices.skipped > 0
-              ? `${summary.invoices.skipped} skipped`
-              : null,
-          ]}
-        />
-        {Object.keys(summary.invoices.skippedReasons).length > 0 && (
-          <details>
-            <summary className="cursor-pointer text-zinc-700">
-              Why invoices were skipped
-            </summary>
-            <ul className="mt-1 ml-5 list-disc text-xs text-zinc-600">
-              {Object.entries(summary.invoices.skippedReasons).map(
-                ([reason, count]) => (
-                  <li key={reason}>
-                    <code>{reason}</code>: {count}
-                  </li>
-                ),
-              )}
-            </ul>
-          </details>
-        )}
-        {summary.errors.length > 0 && (
-          <details>
-            <summary className="cursor-pointer text-red-700">
-              {summary.errors.length} parser warnings
-            </summary>
-            <ul className="mt-1 ml-5 list-disc text-xs text-red-700">
-              {summary.errors.slice(0, 30).map((e, i) => (
-                <li key={i}>{e}</li>
-              ))}
-            </ul>
-          </details>
-        )}
+    <Card className="mb-4">
+      <CardHeader title="Step 0 · Heal data from failed prior import (recommended)" />
+      <div className="p-6 space-y-3">
+        <p className="text-sm text-zinc-700">
+          Your Customers list currently shows hex IDs (e.g.{" "}
+          <code className="bg-zinc-100 px-1 rounded">5ea45f59cd21e818c03a6324</code>
+          ) because a previous import put the Identifix <code>Id</code> into the
+          name column. Click below to move those IDs into the{" "}
+          <code>externalId</code> column so the next step (uploading A.csv) will{" "}
+          <strong>update</strong> those rows with real names instead of creating
+          duplicates. Also deletes any truly-blank ghost rows. Safe to re-run.
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={pending}
+          onClick={() => {
+            startTransition(async () => {
+              const r = await wipeOrphans();
+              setResult(r);
+            });
+          }}
+        >
+          {pending ? "Working…" : "Heal prior import"}
+        </Button>
+        {result && <ResultBlock result={result} />}
       </div>
     </Card>
   );
 }
 
-function ResultRow({
-  label,
-  parts,
+function StepCard({
+  step,
+  title,
+  fileField,
+  hint,
+  action,
 }: {
-  label: string;
-  parts: (string | null)[];
+  step: string;
+  title: string;
+  fileField: string;
+  hint: string;
+  action: (prev: StepResult | null, fd: FormData) => Promise<StepResult>;
 }) {
-  const filtered = parts.filter((p): p is string => !!p);
+  const [state, formAction, pending] = useActionState<
+    StepResult | null,
+    FormData
+  >(action, null);
+  const [name, setName] = useState<string>("");
   return (
-    <div>
-      <span className="font-medium text-zinc-900">{label}:</span>{" "}
-      <span className="text-zinc-700">
-        {filtered.length ? filtered.join(" · ") : "—"}
-      </span>
+    <Card className="mb-4">
+      <CardHeader title={`Step ${step} · ${title}`} />
+      <form action={formAction} className="p-6 space-y-3">
+        <input
+          name={fileField}
+          type="file"
+          accept=".csv,text/csv"
+          required
+          className="text-sm"
+          onChange={(e) => setName(e.target.files?.[0]?.name ?? "")}
+        />
+        {name && (
+          <p className="text-xs text-zinc-600">
+            Loaded <strong>{name}</strong>
+          </p>
+        )}
+        <p className="text-xs text-zinc-500">{hint}</p>
+        <Button disabled={pending} type="submit">
+          {pending ? "Importing…" : `Run step ${step}`}
+        </Button>
+        {state && <ResultBlock result={state} />}
+      </form>
+    </Card>
+  );
+}
+
+function ResultBlock({ result }: { result: StepResult }) {
+  return (
+    <div
+      className={`mt-2 rounded border p-3 text-sm ${
+        result.ok
+          ? "border-green-300 bg-green-50 text-green-900"
+          : "border-red-300 bg-red-50 text-red-900"
+      }`}
+    >
+      <p className="font-medium">{result.message}</p>
+      {Object.keys(result.stats).length > 0 && (
+        <ul className="mt-1 text-xs">
+          {Object.entries(result.stats).map(([k, v]) => (
+            <li key={k}>
+              <span className="text-zinc-600">{k}:</span>{" "}
+              <span className="font-mono">{v}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {result.errors.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs">
+            {result.errors.length} warning/error
+            {result.errors.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-1 ml-4 list-disc text-xs">
+            {result.errors.slice(0, 30).map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

@@ -1,6 +1,10 @@
 import { Card, CardHeader, PageHeader } from "@/components/ui";
 import { IdentifixImportClient } from "./IdentifixImportClient";
 
+// Invoice import can touch 3,000+ repair orders. Bump the Vercel function
+// timeout to the max (Vercel caps to the plan limit: 60s on Hobby, 300s on Pro).
+export const maxDuration = 300;
+
 export default function IdentifixImportPage() {
   return (
     <>

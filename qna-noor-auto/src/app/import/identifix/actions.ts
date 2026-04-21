@@ -10,17 +10,10 @@ import {
   type ParsedInvoice,
 } from "@/lib/identifixImport";
 
-export type IdentifixImportSummary = {
+export type StepResult = {
   ok: boolean;
-  message?: string;
-  customers: { imported: number; updated: number };
-  vehicles: { imported: number; updated: number; orphans: number };
-  invoices: {
-    imported: number;
-    skipped: number;
-    skippedReasons: Record<string, number>;
-  };
-  cleanup: { orphanCustomersDeleted: number };
+  message: string;
+  stats: Record<string, number>;
   errors: string[];
 };
 
@@ -35,70 +28,147 @@ function papa<T extends Record<string, string>>(raw: string): T[] {
   return r.data;
 }
 
-/**
- * Multi-file importer for the Identifix Shop Management export format.
- *
- *   - customersCsv  → A.csv-style (one row per customer, includes Id)
- *   - vehiclesCsv   → B.csv-style (one row per vehicle, CustomerId links to A)
- *   - invoicesCsv   → C.csv-style (multi-row invoice format)
- *
- * All three are optional. Records are linked by the Identifix `Id` stored in
- * our `externalId` field so re-running the import updates existing records
- * rather than creating duplicates.
- *
- * A "wipe ghost customers" option deletes customers with blank names that
- * have no vehicles or repair orders — cleans up failed prior import attempts.
- */
-export async function runIdentifixImport(
-  prevState: IdentifixImportSummary | null,
-  fd: FormData,
-): Promise<IdentifixImportSummary> {
-  const summary: IdentifixImportSummary = {
+/** Run `fn` in parallel over `items`, at most `concurrency` at a time. */
+async function mapConcurrent<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (x: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]);
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, worker);
+  await Promise.all(workers);
+  return out;
+}
+
+// ------------------------------------------------------------------
+// Step 0: heal data from a prior broken import.
+//   (1) Customers whose firstName looks like an Identifix ObjectID
+//       (24 hex chars) and have no externalId — move the ID into
+//       externalId so the A.csv import will UPDATE (not duplicate)
+//       them and fill in real names.
+//   (2) Truly blank rows (no name, no externalId, no vehicles, no
+//       ROs) — delete as ghosts.
+// ------------------------------------------------------------------
+const OBJECT_ID_RE = /^[0-9a-f]{24}$/;
+
+export async function wipeOrphans(): Promise<StepResult> {
+  const res: StepResult = {
     ok: true,
-    customers: { imported: 0, updated: 0 },
-    vehicles: { imported: 0, updated: 0, orphans: 0 },
-    invoices: { imported: 0, skipped: 0, skippedReasons: {} },
-    cleanup: { orphanCustomersDeleted: 0 },
+    message: "",
+    stats: { healed: 0, deleted: 0 },
+    errors: [],
+  };
+  try {
+    // (1) Heal hex-ID-named customers
+    const nullExt = await db.customer.findMany({
+      where: { externalId: null },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const toHeal = nullExt.filter((c) =>
+      OBJECT_ID_RE.test((c.firstName ?? "").trim().toLowerCase()),
+    );
+    if (toHeal.length > 0) {
+      await mapConcurrent(toHeal, 10, async (c) => {
+        const id = c.firstName.trim().toLowerCase();
+        try {
+          await db.customer.update({
+            where: { id: c.id },
+            data: { externalId: id, firstName: "", lastName: "" },
+          });
+        } catch (e) {
+          // externalId uniqueness violation — means another row already
+          // claims this Identifix ID (shouldn't happen, but be defensive).
+          if (res.errors.length < 20) {
+            const msg = e instanceof Error ? e.message : "unknown";
+            res.errors.push(`heal ${id}: ${msg}`);
+          }
+        }
+      });
+      res.stats.healed = toHeal.length;
+    }
+
+    // (2) Delete truly-blank ghost rows
+    const ghosts = await db.customer.findMany({
+      where: {
+        externalId: null,
+        OR: [
+          { AND: [{ firstName: "" }, { lastName: "" }] },
+          { AND: [{ firstName: "-" }, { lastName: "-" }] },
+        ],
+        vehicles: { none: {} },
+        repairOrders: { none: {} },
+      },
+      select: { id: true },
+    });
+    if (ghosts.length > 0) {
+      await db.customer.deleteMany({
+        where: { id: { in: ghosts.map((g) => g.id) } },
+      });
+    }
+    res.stats.deleted = ghosts.length;
+    res.message = `Healed ${res.stats.healed} hex-ID-named customers (ready to get their real names from A.csv) and deleted ${res.stats.deleted} blank ghost records.`;
+  } catch (e) {
+    res.ok = false;
+    res.message = e instanceof Error ? e.message : "Unknown error";
+  }
+  revalidatePath("/customers");
+  return res;
+}
+
+// ------------------------------------------------------------------
+// Step 1: customers (A.csv)
+// ------------------------------------------------------------------
+export async function runCustomersImport(
+  _prev: StepResult | null,
+  fd: FormData,
+): Promise<StepResult> {
+  const res: StepResult = {
+    ok: true,
+    message: "",
+    stats: { parsed: 0, imported: 0, updated: 0 },
     errors: [],
   };
 
   try {
-    const wipeOrphans = fd.get("wipeOrphans") === "on";
-
-    if (wipeOrphans) {
-      const ghosts = await db.customer.findMany({
-        where: {
-          externalId: null,
-          OR: [
-            { firstName: "" },
-            { AND: [{ firstName: "-" }, { lastName: "-" }] },
-          ],
-          vehicles: { none: {} },
-          repairOrders: { none: {} },
-        },
-        select: { id: true },
-      });
-      if (ghosts.length > 0) {
-        await db.customer.deleteMany({
-          where: { id: { in: ghosts.map((g) => g.id) } },
-        });
-        summary.cleanup.orphanCustomersDeleted = ghosts.length;
-      }
+    const file = fd.get("customersCsv");
+    const raw = file instanceof File ? await readFile(file) : null;
+    if (!raw) {
+      res.ok = false;
+      res.message = "No customers file uploaded.";
+      return res;
     }
 
-    // ---- Customers (A.csv) ----
-    const aFile = fd.get("customersCsv");
-    const aRaw = aFile instanceof File ? await readFile(aFile) : null;
-    let customerExternalToId = new Map<string, string>();
-    if (aRaw) {
-      const parsed = parseCustomers(papa(aRaw));
-      summary.errors.push(...parsed.errors.slice(0, 20));
-      for (const c of parsed.customers) {
-        const existing = await db.customer.findUnique({
-          where: { externalId: c.externalId },
-          select: { id: true },
-        });
-        const data = {
+    const parsed = parseCustomers(papa(raw));
+    res.stats.parsed = parsed.customers.length;
+    res.errors = parsed.errors.slice(0, 20);
+
+    const externalIds = parsed.customers.map((c) => c.externalId);
+    const existing = await db.customer.findMany({
+      where: { externalId: { in: externalIds } },
+      select: { id: true, externalId: true },
+    });
+    const existingByExt = new Map(
+      existing.map((e) => [e.externalId!, e.id] as const),
+    );
+
+    const toCreate = parsed.customers.filter(
+      (c) => !existingByExt.has(c.externalId),
+    );
+    const toUpdate = parsed.customers.filter((c) =>
+      existingByExt.has(c.externalId),
+    );
+
+    if (toCreate.length > 0) {
+      await db.customer.createMany({
+        data: toCreate.map((c) => ({
           externalId: c.externalId,
           type: c.type,
           firstName: c.firstName,
@@ -111,55 +181,114 @@ export async function runIdentifixImport(
           city: c.city,
           state: c.state,
           zip: c.zip,
-        };
-        if (existing) {
-          await db.customer.update({ where: { id: existing.id }, data });
-          customerExternalToId.set(c.externalId, existing.id);
-          summary.customers.updated++;
-        } else {
-          const created = await db.customer.create({ data });
-          customerExternalToId.set(c.externalId, created.id);
-          summary.customers.imported++;
-        }
-      }
-    }
-    // Always backfill from DB so subsequent stages can link even if A wasn't
-    // re-uploaded this run.
-    const allExisting = await db.customer.findMany({
-      where: { externalId: { not: null } },
-      select: { id: true, externalId: true },
-    });
-    for (const c of allExisting) {
-      if (c.externalId && !customerExternalToId.has(c.externalId)) {
-        customerExternalToId.set(c.externalId, c.id);
-      }
+        })),
+        skipDuplicates: true,
+      });
+      res.stats.imported = toCreate.length;
     }
 
-    // ---- Vehicles (B.csv) ----
-    const bFile = fd.get("vehiclesCsv");
-    const bRaw = bFile instanceof File ? await readFile(bFile) : null;
-    const vinToVehicleId = new Map<string, string>();
-    if (bRaw) {
-      const parsed = parseVehicles(papa(bRaw));
-      summary.errors.push(...parsed.errors.slice(0, 20));
-      if (parsed.errors.length > 20) {
-        summary.errors.push(
-          `…and ${parsed.errors.length - 20} more vehicle errors truncated.`,
-        );
-      }
-      for (const v of parsed.vehicles) {
-        const custId = customerExternalToId.get(v.customerExternalId);
-        if (!custId) {
-          summary.vehicles.orphans++;
-          continue;
-        }
-        const existing = await db.vehicle.findUnique({
-          where: { externalId: v.externalId },
-          select: { id: true },
+    if (toUpdate.length > 0) {
+      await mapConcurrent(toUpdate, 10, async (c) => {
+        await db.customer.update({
+          where: { externalId: c.externalId },
+          data: {
+            type: c.type,
+            firstName: c.firstName,
+            lastName: c.lastName,
+            companyName: c.companyName,
+            phone: c.phone,
+            altPhone: c.altPhone,
+            email: c.email,
+            street: c.street,
+            city: c.city,
+            state: c.state,
+            zip: c.zip,
+          },
         });
-        const data = {
+      });
+      res.stats.updated = toUpdate.length;
+    }
+
+    res.message = `Imported ${res.stats.imported} new + ${res.stats.updated} updated customers.`;
+  } catch (e) {
+    res.ok = false;
+    res.message = e instanceof Error ? e.message : "Unknown error";
+  }
+
+  revalidatePath("/customers");
+  revalidatePath("/businesses");
+  revalidatePath("/");
+  return res;
+}
+
+// ------------------------------------------------------------------
+// Step 2: vehicles (B.csv)
+// ------------------------------------------------------------------
+export async function runVehiclesImport(
+  _prev: StepResult | null,
+  fd: FormData,
+): Promise<StepResult> {
+  const res: StepResult = {
+    ok: true,
+    message: "",
+    stats: { parsed: 0, imported: 0, updated: 0, orphans: 0 },
+    errors: [],
+  };
+
+  try {
+    const file = fd.get("vehiclesCsv");
+    const raw = file instanceof File ? await readFile(file) : null;
+    if (!raw) {
+      res.ok = false;
+      res.message = "No vehicles file uploaded.";
+      return res;
+    }
+
+    const parsed = parseVehicles(papa(raw));
+    res.stats.parsed = parsed.vehicles.length;
+    res.errors = parsed.errors.slice(0, 20);
+
+    const customerExternalIds = Array.from(
+      new Set(parsed.vehicles.map((v) => v.customerExternalId)),
+    );
+    const custRows = await db.customer.findMany({
+      where: { externalId: { in: customerExternalIds } },
+      select: { id: true, externalId: true },
+    });
+    const custByExt = new Map(
+      custRows.map((c) => [c.externalId!, c.id] as const),
+    );
+
+    const linked = parsed.vehicles
+      .map((v) => ({
+        ...v,
+        customerId: custByExt.get(v.customerExternalId),
+      }))
+      .filter((v) => {
+        if (!v.customerId) {
+          res.stats.orphans++;
+          return false;
+        }
+        return true;
+      }) as Array<(typeof parsed.vehicles)[number] & { customerId: string }>;
+
+    const vehExternalIds = linked.map((v) => v.externalId);
+    const existing = await db.vehicle.findMany({
+      where: { externalId: { in: vehExternalIds } },
+      select: { id: true, externalId: true },
+    });
+    const existingByExt = new Map(
+      existing.map((e) => [e.externalId!, e.id] as const),
+    );
+
+    const toCreate = linked.filter((v) => !existingByExt.has(v.externalId));
+    const toUpdate = linked.filter((v) => existingByExt.has(v.externalId));
+
+    if (toCreate.length > 0) {
+      await db.vehicle.createMany({
+        data: toCreate.map((v) => ({
           externalId: v.externalId,
-          customerId: custId,
+          customerId: v.customerId,
           vin: v.vin,
           year: v.year,
           make: v.make,
@@ -168,113 +297,170 @@ export async function runIdentifixImport(
           color: v.color,
           licensePlate: v.licensePlate,
           licenseState: v.licenseState,
-        };
-        let vehicleId: string;
-        if (existing) {
-          await db.vehicle.update({ where: { id: existing.id }, data });
-          vehicleId = existing.id;
-          summary.vehicles.updated++;
-        } else {
-          const created = await db.vehicle.create({ data });
-          vehicleId = created.id;
-          summary.vehicles.imported++;
-        }
-        if (v.vin) vinToVehicleId.set(v.vin, vehicleId);
-      }
-    }
-    const allExistingVehicles = await db.vehicle.findMany({
-      where: { vin: { not: null } },
-      select: { id: true, vin: true },
-    });
-    for (const ev of allExistingVehicles) {
-      if (ev.vin && !vinToVehicleId.has(ev.vin)) {
-        vinToVehicleId.set(ev.vin, ev.id);
-      }
-    }
-
-    // ---- Invoices (C.csv) ----
-    const cFile = fd.get("invoicesCsv");
-    const cRaw = cFile instanceof File ? await readFile(cFile) : null;
-    if (cRaw) {
-      const parsed = parseInvoices(cRaw);
-      summary.errors.push(...parsed.errors.slice(0, 10));
-
-      const existingROs = await db.repairOrder.findMany({
-        select: { roNumber: true },
+        })),
+        skipDuplicates: true,
       });
-      const usedRoNumbers = new Set<number>(existingROs.map((r) => r.roNumber));
-      let nextRoNumber =
-        existingROs.length > 0
-          ? Math.max(...existingROs.map((r) => r.roNumber)) + 1
-          : 10000;
-
-      for (const inv of parsed.invoices) {
-        const reason = await importInvoice(
-          inv,
-          vinToVehicleId,
-          usedRoNumbers,
-          () => {
-            while (usedRoNumbers.has(nextRoNumber)) nextRoNumber++;
-            const n = nextRoNumber;
-            usedRoNumbers.add(n);
-            nextRoNumber++;
-            return n;
-          },
-        );
-        if (reason === null) {
-          summary.invoices.imported++;
-        } else {
-          summary.invoices.skipped++;
-          summary.invoices.skippedReasons[reason] =
-            (summary.invoices.skippedReasons[reason] ?? 0) + 1;
-        }
-      }
+      res.stats.imported = toCreate.length;
     }
 
-    summary.message = "Import complete.";
+    if (toUpdate.length > 0) {
+      await mapConcurrent(toUpdate, 10, async (v) => {
+        await db.vehicle.update({
+          where: { externalId: v.externalId },
+          data: {
+            customerId: v.customerId,
+            vin: v.vin,
+            year: v.year,
+            make: v.make,
+            model: v.model,
+            engine: v.engine,
+            color: v.color,
+            licensePlate: v.licensePlate,
+            licenseState: v.licenseState,
+          },
+        });
+      });
+      res.stats.updated = toUpdate.length;
+    }
+
+    res.message = `Imported ${res.stats.imported} new + ${res.stats.updated} updated vehicles (${res.stats.orphans} skipped with no matching customer).`;
   } catch (e) {
-    summary.ok = false;
-    summary.message = e instanceof Error ? e.message : "Unknown error";
+    res.ok = false;
+    res.message = e instanceof Error ? e.message : "Unknown error";
   }
 
-  revalidatePath("/customers");
   revalidatePath("/vehicles");
-  revalidatePath("/repair-orders");
   revalidatePath("/");
-  return summary;
+  return res;
 }
 
-/** Returns null on success, or a short skip-reason string. */
-async function importInvoice(
-  inv: ParsedInvoice,
-  vinToVehicleId: Map<string, string>,
-  usedRoNumbers: Set<number>,
-  allocateRoNumber: () => number,
-): Promise<string | null> {
-  if (!inv.vin) return "no-vin";
-  const vehicleId = vinToVehicleId.get(inv.vin);
-  if (!vehicleId) return "vehicle-not-found";
+// ------------------------------------------------------------------
+// Step 3: invoices (C.csv)
+// ------------------------------------------------------------------
+export async function runInvoicesImport(
+  _prev: StepResult | null,
+  fd: FormData,
+): Promise<StepResult> {
+  const res: StepResult = {
+    ok: true,
+    message: "",
+    stats: {
+      parsed: 0,
+      imported: 0,
+      skippedNoVin: 0,
+      skippedNoVehicle: 0,
+      skippedAlreadyImported: 0,
+    },
+    errors: [],
+  };
 
-  const vehicle = await db.vehicle.findUnique({
-    where: { id: vehicleId },
-    select: { customerId: true },
-  });
-  if (!vehicle) return "vehicle-not-found";
+  try {
+    const file = fd.get("invoicesCsv");
+    const raw = file instanceof File ? await readFile(file) : null;
+    if (!raw) {
+      res.ok = false;
+      res.message = "No invoices file uploaded.";
+      return res;
+    }
 
-  const marker = `[Identifix invoice #${inv.invoiceNumber}]`;
-  const dup = await db.repairOrder.findFirst({
-    where: { notes: { contains: marker } },
-    select: { id: true },
-  });
-  if (dup) return "already-imported";
+    const parsed = parseInvoices(raw);
+    res.stats.parsed = parsed.invoices.length;
+    res.errors = parsed.errors.slice(0, 20);
 
-  let roNumber = parseInt(inv.invoiceNumber, 10) || 0;
-  if (!roNumber || usedRoNumbers.has(roNumber)) {
-    roNumber = allocateRoNumber();
-  } else {
-    usedRoNumbers.add(roNumber);
+    const allVehicles = await db.vehicle.findMany({
+      where: { vin: { not: null } },
+      select: { id: true, vin: true, customerId: true },
+    });
+    const vinToVehicle = new Map(
+      allVehicles.map((v) => [v.vin!, v] as const),
+    );
+
+    const existingROs = await db.repairOrder.findMany({
+      select: { roNumber: true, notes: true },
+    });
+    const usedRoNumbers = new Set<number>(existingROs.map((r) => r.roNumber));
+    let nextRoNumber =
+      existingROs.length > 0
+        ? Math.max(...existingROs.map((r) => r.roNumber)) + 1
+        : 10000;
+    const alreadyImported = new Set<string>();
+    for (const ro of existingROs) {
+      if (ro.notes) {
+        const m = ro.notes.match(/\[Identifix invoice #([^\]]+)\]/);
+        if (m) alreadyImported.add(m[1]);
+      }
+    }
+
+    // Classify invoices up front.
+    type Task = {
+      inv: ParsedInvoice;
+      vehicleId: string;
+      customerId: string;
+      roNumber: number;
+    };
+    const tasks: Task[] = [];
+    for (const inv of parsed.invoices) {
+      if (!inv.vin) {
+        res.stats.skippedNoVin++;
+        continue;
+      }
+      const veh = vinToVehicle.get(inv.vin);
+      if (!veh) {
+        res.stats.skippedNoVehicle++;
+        continue;
+      }
+      if (alreadyImported.has(inv.invoiceNumber)) {
+        res.stats.skippedAlreadyImported++;
+        continue;
+      }
+      let roNumber = parseInt(inv.invoiceNumber, 10) || 0;
+      if (!roNumber || usedRoNumbers.has(roNumber)) {
+        while (usedRoNumbers.has(nextRoNumber)) nextRoNumber++;
+        roNumber = nextRoNumber;
+        nextRoNumber++;
+      }
+      usedRoNumbers.add(roNumber);
+      tasks.push({
+        inv,
+        vehicleId: veh.id,
+        customerId: veh.customerId,
+        roNumber,
+      });
+    }
+
+    // Create ROs in parallel, capped at 8 concurrent to avoid Neon pool
+    // exhaustion. Each create also nests laborLines/partLines/payments.
+    let imported = 0;
+    await mapConcurrent(tasks, 8, async (t) => {
+      try {
+        await createInvoiceRo(t.inv, t.vehicleId, t.customerId, t.roNumber);
+        imported++;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Unknown";
+        if (res.errors.length < 30) {
+          res.errors.push(`Invoice #${t.inv.invoiceNumber}: ${msg}`);
+        }
+      }
+    });
+    res.stats.imported = imported;
+
+    res.message = `Imported ${imported} invoices. Skipped: ${res.stats.skippedNoVin} (no VIN), ${res.stats.skippedNoVehicle} (vehicle not in DB), ${res.stats.skippedAlreadyImported} (already imported).`;
+  } catch (e) {
+    res.ok = false;
+    res.message = e instanceof Error ? e.message : "Unknown error";
   }
 
+  revalidatePath("/repair-orders");
+  revalidatePath("/");
+  return res;
+}
+
+async function createInvoiceRo(
+  inv: ParsedInvoice,
+  vehicleId: string,
+  customerId: string,
+  roNumber: number,
+): Promise<void> {
   const balance = inv.totals.balanceDue ?? 0;
   const paid = inv.totals.paid ?? 0;
   const status = balance <= 0.009 ? "PAID" : "INVOICED";
@@ -289,6 +475,7 @@ async function importInvoice(
     }
   }
 
+  const marker = `[Identifix invoice #${inv.invoiceNumber}]`;
   const techNote = inv.technicians.length
     ? `Technicians: ${inv.technicians.join(", ")}`
     : "";
@@ -333,10 +520,10 @@ async function importInvoice(
     }
   }
 
-  const ro = await db.repairOrder.create({
+  await db.repairOrder.create({
     data: {
       roNumber,
-      customerId: vehicle.customerId,
+      customerId,
       vehicleId,
       status,
       openedAt,
@@ -348,20 +535,17 @@ async function importInvoice(
       notes,
       laborLines: { create: labor },
       partLines: { create: parts },
+      payments:
+        paid > 0
+          ? {
+              create: {
+                amount: paid,
+                method: "OTHER",
+                note: "Imported from Identifix invoice history",
+                paidAt: openedAt,
+              },
+            }
+          : undefined,
     },
   });
-
-  if (paid > 0) {
-    await db.payment.create({
-      data: {
-        repairOrderId: ro.id,
-        amount: paid,
-        method: "OTHER",
-        note: "Imported from Identifix invoice history",
-        paidAt: openedAt,
-      },
-    });
-  }
-
-  return null;
 }
