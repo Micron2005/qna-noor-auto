@@ -36,12 +36,18 @@ const OPEN_STATUSES = ["ESTIMATE", "IN_PROGRESS", "COMPLETED", "INVOICED"];
 export default async function RepairOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; view?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    view?: string;
+    sort?: string;
+  }>;
 }) {
-  const { q, status, view } = await searchParams;
+  const { q, status, view, sort } = await searchParams;
   const query = q?.trim() ?? "";
   const statusFilter = status?.trim();
   const viewMode = view?.trim() || "open"; // "open" | "all"
+  const sortMode = sort?.trim() === "oldest" ? "oldest" : "newest";
 
   // If the query is all digits, treat it as an exact RO-number lookup — that
   // way typing "1234" jumps straight to RO #1234 instead of returning any RO
@@ -102,7 +108,7 @@ export default async function RepairOrdersPage({
       partLines: true,
       feeLines: true,
     },
-    orderBy: { openedAt: "desc" },
+    orderBy: { openedAt: sortMode === "oldest" ? "asc" : "desc" },
     take: 200,
   });
 
@@ -144,6 +150,10 @@ export default async function RepairOrdersPage({
         <Select name="view" defaultValue={viewMode}>
           <option value="open">Open only (hide paid/cancelled)</option>
           <option value="all">All ROs (include paid/cancelled)</option>
+        </Select>
+        <Select name="sort" defaultValue={sortMode}>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
         </Select>
         <Select name="status" defaultValue={statusFilter ?? ""}>
           <option value="">Any status</option>

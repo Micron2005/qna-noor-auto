@@ -210,11 +210,31 @@ export default async function RepairOrderDetailPage({
           </>
         }
         actions={
-          <LifecycleActions
-            id={ro.id}
-            status={ro.status}
-            roNumber={ro.roNumber}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <LifecycleActions
+              id={ro.id}
+              status={ro.status}
+              roNumber={ro.roNumber}
+            />
+            {ro.shareToken && (
+              <ShareActions
+                token={ro.shareToken}
+                customerEmail={ro.customer.email}
+                customerPhone={ro.customer.phone}
+                customerName={fullName(ro.customer)}
+                roNumber={ro.roNumber}
+                shopName={shopName}
+                docLabel={
+                  ro.status === "INVOICED" ||
+                  ro.status === "PAID" ||
+                  ro.status === "COMPLETED"
+                    ? "Invoice"
+                    : "Estimate"
+                }
+                compact
+              />
+            )}
+          </div>
         }
       />
 

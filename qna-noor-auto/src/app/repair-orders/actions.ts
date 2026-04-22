@@ -131,9 +131,9 @@ export async function updateRepairOrder(id: string, fd: FormData) {
   revalidatePath("/repair-orders");
   revalidatePath("/");
   // "Save & Exit" clicks set exit=1 in the form data; bounce back to the
-  // list instead of re-rendering the detail page.
+  // dashboard instead of re-rendering the detail page.
   if (fd.get("exit") === "1") {
-    redirect(`/repair-orders`);
+    redirect(`/`);
   }
   redirect(`/repair-orders/${id}`);
 }
