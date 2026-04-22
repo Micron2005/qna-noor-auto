@@ -29,28 +29,39 @@ const STATUSES = [
   "CANCELLED",
 ];
 
+// "open" = anything that still needs action. "all" = include paid/cancelled.
+const OPEN_STATUSES = ["ESTIMATE", "IN_PROGRESS", "COMPLETED", "INVOICED"];
+
 export default async function RepairOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; view?: string }>;
 }) {
-  const { q, status } = await searchParams;
+  const { q, status, view } = await searchParams;
   const query = q?.trim() ?? "";
   const statusFilter = status?.trim();
+  const viewMode = view?.trim() || "open"; // "open" | "all"
 
   const ros = await db.repairOrder.findMany({
     where: {
+      // Explicit status filter wins; otherwise default to "open only" unless
+      // the user picked view=all.
       ...(statusFilter && STATUSES.includes(statusFilter)
         ? { status: statusFilter }
-        : {}),
+        : viewMode === "all"
+          ? {}
+          : { status: { in: OPEN_STATUSES } }),
       ...(query
         ? {
             OR: [
-              { customer: { lastName: { contains: query } } },
-              { customer: { firstName: { contains: query } } },
-              { vehicle: { vin: { contains: query } } },
-              { vehicle: { licensePlate: { contains: query } } },
-              { complaint: { contains: query } },
+              { customer: { lastName: { contains: query, mode: "insensitive" } } },
+              { customer: { firstName: { contains: query, mode: "insensitive" } } },
+              { customer: { companyName: { contains: query, mode: "insensitive" } } },
+              { customer: { phone: { contains: query } } },
+              { customer: { email: { contains: query, mode: "insensitive" } } },
+              { vehicle: { vin: { contains: query, mode: "insensitive" } } },
+              { vehicle: { licensePlate: { contains: query, mode: "insensitive" } } },
+              { complaint: { contains: query, mode: "insensitive" } },
               ...(parseInt(query, 10)
                 ? [{ roNumber: parseInt(query, 10) }]
                 : []),
@@ -94,21 +105,38 @@ export default async function RepairOrdersPage({
         }
       />
 
-      <form className="mb-4 flex gap-2 max-w-xl" method="GET">
+      <form className="mb-4 flex flex-wrap items-center gap-2 max-w-3xl" method="GET">
         <Input
           name="q"
           defaultValue={query}
-          placeholder="Search RO #, customer, VIN, plate, complaint…"
+          placeholder="Search RO #, customer, company, VIN, plate, complaint…"
+          className="flex-1 min-w-[16rem]"
         />
+        <Select name="view" defaultValue={viewMode}>
+          <option value="open">Open only (hide paid/cancelled)</option>
+          <option value="all">All ROs (include paid/cancelled)</option>
+        </Select>
         <Select name="status" defaultValue={statusFilter ?? ""}>
-          <option value="">All statuses</option>
+          <option value="">Any status</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
               {s.replace("_", " ")}
             </option>
           ))}
         </Select>
+        <button
+          type="submit"
+          className="h-9 px-3 rounded-md text-sm font-medium border border-zinc-300 bg-white hover:bg-zinc-50"
+        >
+          Apply
+        </button>
       </form>
+      {viewMode !== "all" && !statusFilter && (
+        <p className="-mt-2 mb-4 text-xs text-zinc-500">
+          Showing open repair orders only. Paid and cancelled ROs are hidden —
+          switch to &quot;All ROs&quot; or pick a specific status to see them.
+        </p>
+      )}
 
       {ros.length === 0 ? (
         <EmptyState
