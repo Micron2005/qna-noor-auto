@@ -405,7 +405,7 @@ export default async function RepairOrderDetailPage({
                       <span className="ml-2 text-xs">
                         ({formatMarkup(partsProfit.markupPct)}
                         {partsProfit.marginPct != null &&
-                          ` / ${Math.round(partsProfit.marginPct)}% margin`}
+                          ` / ${formatMargin(partsProfit.marginPct)}`}
                         )
                       </span>
                     )}
