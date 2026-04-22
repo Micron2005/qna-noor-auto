@@ -21,6 +21,7 @@ export function ShareActions({
   roNumber,
   shopName,
   docLabel = "Invoice",
+  compact = false,
 }: {
   token: string;
   customerEmail: string | null | undefined;
@@ -29,6 +30,13 @@ export function ShareActions({
   roNumber: number;
   shopName: string;
   docLabel?: "Estimate" | "Invoice";
+  /**
+   * `compact` skips the Open-in-new-tab / Print buttons and just renders
+   * Email + Text. Used by the top-right lifecycle action bar where the
+   * "Invoice PDF" / "Print Estimate" LinkButton already covers the
+   * open-in-new-tab + print flow.
+   */
+  compact?: boolean;
 }) {
   const [origin, setOrigin] = useState("");
 
@@ -81,22 +89,26 @@ export function ShareActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <a
-        href={shareUrl || "#"}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center h-9 px-3 rounded-md text-sm font-medium border border-zinc-300 bg-white hover:bg-zinc-50"
-      >
-        Open in new tab ↗
-      </a>
-      <button
-        type="button"
-        onClick={openPrint}
-        disabled={!shareUrl}
-        className="inline-flex items-center h-9 px-3 rounded-md text-sm font-medium border border-zinc-300 bg-white hover:bg-zinc-50 disabled:opacity-50"
-      >
-        Print (opens new tab)
-      </button>
+      {!compact && (
+        <>
+          <a
+            href={shareUrl || "#"}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center h-9 px-3 rounded-md text-sm font-medium border border-zinc-300 bg-white hover:bg-zinc-50"
+          >
+            Open in new tab ↗
+          </a>
+          <button
+            type="button"
+            onClick={openPrint}
+            disabled={!shareUrl}
+            className="inline-flex items-center h-9 px-3 rounded-md text-sm font-medium border border-zinc-300 bg-white hover:bg-zinc-50 disabled:opacity-50"
+          >
+            Print (opens new tab)
+          </button>
+        </>
+      )}
       {customerEmail ? (
         <a
           href={mailtoHref}
