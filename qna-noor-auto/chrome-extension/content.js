@@ -4,17 +4,27 @@
 //   #qna-vin=1HGCM82633A004352
 //   #qna-plate=ABC1234&qna-state=VA
 //
-// This script watches for that hash and guides the user through the
-// supplier's Add Vehicle dialog: it pops a floating toolbar with the
-// VIN pre-filled, and auto-fills the VIN input as soon as the dialog
-// appears. We don't auto-click ADD — just fill — so nothing surprising
-// happens if the DOM layout changes on their side.
+// This script watches for an ADD VEHICLE DIALOG to appear on the
+// supplier's page and fills the VIN / plate input inside that dialog.
+//
+// CRITICAL: we only fill inputs that live inside a container that is
+// clearly an Add-Vehicle modal (role=dialog OR text "Add Vehicle" /
+// "My Garage" / "Manage Vehicle" / "Select Vehicle"). We never fill
+// the page's part-search bar, even if its placeholder mentions "VIN".
+// Page-level search inputs ([type=search], role="search", header/nav)
+// are excluded outright.
+//
+// We never auto-click ADD. The user always confirms.
 
 (function () {
   "use strict";
 
   const STYLE_ID = "qna-az-style";
   const BAR_ID = "qna-az-bar";
+
+  /** Words whose presence in a container's text means "this is the Add Vehicle area". */
+  const DIALOG_TEXT_RE =
+    /(add\s*(?:a\s*)?vehicle|new\s*vehicle|my\s*garage|manage\s*vehicles?|select\s*vehicle|vehicle\s*manager|change\s*vehicle)/i;
 
   function parseQnaHash() {
     const hash = window.location.hash.replace(/^#/, "");
@@ -38,7 +48,7 @@
         background: #111; color: #fff; border-radius: 10px;
         box-shadow: 0 8px 24px rgba(0,0,0,0.25);
         font: 13px/1.3 system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
-        padding: 12px 14px; max-width: 340px;
+        padding: 12px 14px; max-width: 360px;
       }
       #${BAR_ID} .qna-title { font-weight: 600; margin-bottom: 4px; }
       #${BAR_ID} .qna-mono { font-family: ui-monospace, Menlo, Consolas, monospace;
@@ -52,8 +62,9 @@
       #${BAR_ID} button.qna-ghost {
         background: transparent; color: #fff; border: 1px solid #555; font-weight: 400;
       }
-      #${BAR_ID} .qna-status { color: #a7f3d0; font-size: 12px; margin-top: 6px; }
-      #${BAR_ID} .qna-error { color: #fca5a5; font-size: 12px; margin-top: 6px; }
+      #${BAR_ID} .qna-hint { color: #d4d4d8; font-size: 12px; margin-top: 6px; }
+      #${BAR_ID} .qna-ok { color: #a7f3d0; font-size: 12px; margin-top: 6px; }
+      #${BAR_ID} .qna-err { color: #fca5a5; font-size: 12px; margin-top: 6px; }
     `;
     document.documentElement.appendChild(s);
   }
@@ -72,39 +83,44 @@
       <div>
         ${kindLabel}: <span class="qna-mono">${payload.value}</span>${stateLabel}
       </div>
+      <div class="qna-hint">
+        Click <b>Change</b> / <b>Manage</b> on their page to open Add Vehicle —
+        the ${kindLabel} will fill automatically.
+      </div>
       <div class="qna-row">
-        <button id="qna-fill">Fill Add Vehicle</button>
+        <button id="qna-fill">Fill now</button>
         <button id="qna-copy" class="qna-ghost">Copy ${kindLabel}</button>
         <button id="qna-dismiss" class="qna-ghost">×</button>
       </div>
-      <div id="qna-status" class="qna-status" hidden></div>
+      <div id="qna-status" hidden></div>
     `;
     document.body.appendChild(bar);
 
-    const setStatus = (msg, isError) => {
+    const setStatus = (msg, level) => {
       const el = document.getElementById("qna-status");
       if (!el) return;
       el.textContent = msg;
       el.hidden = false;
-      el.className = isError ? "qna-error" : "qna-status";
+      el.className =
+        level === "err" ? "qna-err" : level === "ok" ? "qna-ok" : "qna-hint";
     };
 
     document.getElementById("qna-fill").addEventListener("click", () => {
-      const ok = fillAddVehicle(payload);
-      if (ok) {
-        setStatus("Filled. Click ADD on their dialog.");
+      const result = fillAddVehicle(payload);
+      if (result.ok) {
+        setStatus("Filled. Click ADD on their dialog.", "ok");
       } else {
         setStatus(
-          "Couldn't find the VIN input. Click Change / Add Vehicle on their top bar first, then hit Fill again.",
-          true,
+          `Couldn't find an Add Vehicle dialog yet. ${result.reason}`,
+          "err",
         );
       }
     });
     document.getElementById("qna-copy").addEventListener("click", () => {
       navigator.clipboard
         ?.writeText(payload.value)
-        .then(() => setStatus("Copied to clipboard."))
-        .catch(() => setStatus("Clipboard unavailable.", true));
+        .then(() => setStatus("Copied to clipboard.", "ok"))
+        .catch(() => setStatus("Clipboard unavailable.", "err"));
     });
     document.getElementById("qna-dismiss").addEventListener("click", () => {
       bar.remove();
@@ -112,19 +128,118 @@
   }
 
   /**
-   * Look for a VIN-labeled input in the current DOM (any subtree, incl.
-   * dialog roots outside body). Uses multiple strategies because AZP /
-   * First Call both use framework-generated markup that can change.
+   * Find the Add-Vehicle container on the page, if one is currently
+   * visible. Returns the container Element or null.
+   *
+   * Heuristics (in order):
+   *   1. An open role=dialog / aria-modal element whose visible text
+   *      matches DIALOG_TEXT_RE.
+   *   2. An element with a class containing "modal" / "dialog" /
+   *      "drawer" / "overlay" that is visible and contains DIALOG_TEXT_RE.
+   *   3. An element that directly contains a heading (h1-h4, legend,
+   *      [role=heading]) whose text matches DIALOG_TEXT_RE — a dialog
+   *      doesn't need to use aria roles to be obvious to the user.
+   *
+   * Returns null for the landing page / top-bar search area.
    */
-  function findInputByLabels(labelRegexes) {
+  function findAddVehicleContainer() {
+    const dialogs = document.querySelectorAll(
+      [
+        '[role="dialog"]:not([aria-hidden="true"])',
+        '[aria-modal="true"]',
+        '[class*="modal" i]',
+        '[class*="Modal"]',
+        '[class*="dialog" i]',
+        '[class*="Dialog"]',
+        '[class*="drawer" i]',
+        '[class*="overlay" i]',
+        '[data-testid*="modal" i]',
+        '[data-testid*="dialog" i]',
+        '[data-testid*="vehicle" i]',
+      ].join(","),
+    );
+    for (const el of dialogs) {
+      if (!isVisible(el)) continue;
+      const txt = (el.textContent || "").slice(0, 4000);
+      if (DIALOG_TEXT_RE.test(txt)) return el;
+    }
+    // Fall back: any visible heading matching the regex, scoped to its
+    // nearest section/form/aside/div ancestor.
+    const headings = document.querySelectorAll(
+      'h1, h2, h3, h4, legend, [role="heading"]',
+    );
+    for (const h of headings) {
+      if (!isVisible(h)) continue;
+      if (DIALOG_TEXT_RE.test(h.textContent || "")) {
+        const scope =
+          h.closest("form, section, aside, dialog, [role='dialog']") ||
+          h.parentElement;
+        if (scope && isVisible(scope)) return scope;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Hard blocklist: never touch these inputs, even if the label matches.
+   * This is what protected us from filling AZP's "Search by VIN or part"
+   * input in the top nav.
+   */
+  function isSearchInput(input) {
+    if (!input) return true;
+    if (input.type === "search") return true;
+    if (input.getAttribute("role") === "searchbox") return true;
+    // Search ancestors
+    if (
+      input.closest(
+        '[role="search"], [role="searchbox"], header, nav, [class*="search" i], [class*="Search"], [data-testid*="search" i]',
+      )
+    ) {
+      return true;
+    }
+    const hay = collectLabelText(input);
+    if (/search|keyword|part\s*#|partnumber|part\s*number/i.test(hay)) {
+      return true;
+    }
+    return false;
+  }
+
+  function findVinInputInContainer(container) {
     const inputs = Array.from(
-      document.querySelectorAll('input[type="text"], input:not([type])'),
+      container.querySelectorAll(
+        'input[type="text"], input[type="tel"], input:not([type])',
+      ),
+    );
+    // First pass: label-based VIN match
+    for (const input of inputs) {
+      if (!isVisible(input)) continue;
+      if (isSearchInput(input)) continue;
+      const hay = collectLabelText(input);
+      if (/(^|\W)vin(\W|$)|vehicle\s*identification/i.test(hay)) {
+        return input;
+      }
+    }
+    // Second pass: maxlength=17 inside Add Vehicle container, not search
+    for (const input of inputs) {
+      if (!isVisible(input)) continue;
+      if (isSearchInput(input)) continue;
+      if (input.getAttribute("maxlength") === "17") return input;
+    }
+    return null;
+  }
+
+  function findPlateInputInContainer(container) {
+    const inputs = Array.from(
+      container.querySelectorAll(
+        'input[type="text"], input[type="tel"], input:not([type])',
+      ),
     );
     for (const input of inputs) {
       if (!isVisible(input)) continue;
+      if (isSearchInput(input)) continue;
       const hay = collectLabelText(input);
-      for (const re of labelRegexes) {
-        if (re.test(hay)) return input;
+      if (/license\s*plate|plate\s*number|tag\s*(number|#)/i.test(hay)) {
+        return input;
       }
     }
     return null;
@@ -135,12 +250,15 @@
     if (input.placeholder) parts.push(input.placeholder);
     if (input.name) parts.push(input.name);
     if (input.id) parts.push(input.id);
-    if (input.getAttribute("aria-label"))
+    if (input.getAttribute("aria-label")) {
       parts.push(input.getAttribute("aria-label"));
+    }
     const labelledBy = input.getAttribute("aria-labelledby");
     if (labelledBy) {
-      const labelEl = document.getElementById(labelledBy);
-      if (labelEl?.textContent) parts.push(labelEl.textContent);
+      for (const id of labelledBy.split(/\s+/)) {
+        const labelEl = document.getElementById(id);
+        if (labelEl?.textContent) parts.push(labelEl.textContent);
+      }
     }
     if (input.id) {
       const assoc = document.querySelector(`label[for="${cssEsc(input.id)}"]`);
@@ -148,13 +266,6 @@
     }
     const parentLabel = input.closest("label");
     if (parentLabel?.textContent) parts.push(parentLabel.textContent);
-    // Walk up 3 levels looking for sibling headings
-    let node = input.parentElement;
-    for (let i = 0; i < 3 && node; i++) {
-      const heading = node.querySelector("h1,h2,h3,h4,legend,strong,b");
-      if (heading?.textContent) parts.push(heading.textContent);
-      node = node.parentElement;
-    }
     return parts.join(" | ").toLowerCase();
   }
 
@@ -165,7 +276,12 @@
 
   function isVisible(el) {
     if (!el) return false;
-    if (!el.offsetParent && getComputedStyle(el).position !== "fixed") {
+    const style = getComputedStyle(el);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.opacity === "0"
+    ) {
       return false;
     }
     const rect = el.getBoundingClientRect();
@@ -187,30 +303,40 @@
   }
 
   function fillAddVehicle(payload) {
+    const container = findAddVehicleContainer();
+    if (!container) {
+      return {
+        ok: false,
+        reason:
+          "Click Change / Manage / Add Vehicle on their page first, then hit Fill again.",
+      };
+    }
     if (payload.kind === "vin") {
-      const input =
-        findInputByLabels([/vin/i, /vehicle\s*identification/i]) ||
-        document.querySelector(
-          'input[maxlength="17"], input[name*="vin" i], input[id*="vin" i]',
-        );
-      if (!input) return false;
+      const input = findVinInputInContainer(container);
+      if (!input) {
+        return {
+          ok: false,
+          reason:
+            "Found the dialog but no VIN input in it — try pasting manually (Copy VIN button below).",
+        };
+      }
       input.focus();
       setNativeValue(input, payload.value);
-      return true;
+      return { ok: true };
     }
     // plate
-    const plateInput =
-      findInputByLabels([/license\s*plate/i, /plate/i]) ||
-      document.querySelector(
-        'input[name*="plate" i], input[id*="plate" i], input[placeholder*="plate" i]',
-      );
-    if (!plateInput) return false;
+    const plateInput = findPlateInputInContainer(container);
+    if (!plateInput) {
+      return {
+        ok: false,
+        reason:
+          "Found the dialog but no Plate input in it — try pasting manually.",
+      };
+    }
     plateInput.focus();
     setNativeValue(plateInput, payload.value);
     if (payload.state) {
-      const stateSelect =
-        document.querySelector('select[name*="state" i], select[id*="state" i]') ||
-        findSelectByLabel([/state/i]);
+      const stateSelect = findSelectInContainer(container, [/state/i]);
       if (stateSelect) {
         const target = payload.state.toUpperCase();
         for (const opt of stateSelect.options) {
@@ -222,11 +348,11 @@
         }
       }
     }
-    return true;
+    return { ok: true };
   }
 
-  function findSelectByLabel(regexes) {
-    const selects = Array.from(document.querySelectorAll("select"));
+  function findSelectInContainer(container, regexes) {
+    const selects = Array.from(container.querySelectorAll("select"));
     for (const sel of selects) {
       if (!isVisible(sel)) continue;
       const hay = collectLabelText(sel);
@@ -240,44 +366,44 @@
   function run() {
     const payload = parseQnaHash();
     if (!payload) return;
-    // Initial attempt: some dialogs are rendered on page load (AZP's top
-    // bar has the vehicle box visible). Try once, show the bar either way.
+    // Show the bar on page-load so the user sees "QNA: set vehicle" and
+    // knows to click Change / Manage. We do NOT auto-fill on page load
+    // — only after a mutation introduces an Add Vehicle dialog.
     makeBar(payload);
-    tryAutofillWithRetries(payload);
 
-    // If the user clicks Change / Add Vehicle, the dialog appears later.
-    // Retry autofill whenever the DOM adds new inputs.
+    // Watch for the Add Vehicle dialog to appear; once it does, fill.
+    let filledAt = 0;
+    const tryFill = () => {
+      if (Date.now() - filledAt < 1500) return; // cooldown
+      const container = findAddVehicleContainer();
+      if (!container) return;
+      // Small delay for framework to finish rendering child inputs
+      setTimeout(() => {
+        const result = fillAddVehicle(payload);
+        if (result.ok) {
+          filledAt = Date.now();
+          const status = document.getElementById("qna-status");
+          if (status) {
+            status.textContent = "Filled. Click ADD on their dialog.";
+            status.className = "qna-ok";
+            status.hidden = false;
+          }
+        }
+      }, 120);
+    };
+
     const mo = new MutationObserver(() => {
-      tryAutofillWithRetries(payload, 1);
+      tryFill();
     });
     mo.observe(document.documentElement, { childList: true, subtree: true });
-    // Stop observing after 5 minutes; the extension is meant for the
-    // initial Add Vehicle flow, not an always-on watcher.
-    setTimeout(() => mo.disconnect(), 5 * 60 * 1000);
-  }
-
-  const FILL_COOLDOWN_MS = 1500;
-  let lastFillTs = 0;
-  function tryAutofillWithRetries(payload, maxAttempts = 3) {
-    const now = Date.now();
-    if (now - lastFillTs < FILL_COOLDOWN_MS) return;
-    for (let i = 0; i < maxAttempts; i++) {
-      if (fillAddVehicle(payload)) {
-        lastFillTs = Date.now();
-        const status = document.getElementById("qna-status");
-        if (status) {
-          status.textContent = "Filled. Click ADD on their dialog.";
-          status.hidden = false;
-          status.className = "qna-status";
-        }
-        return true;
-      }
-    }
-    return false;
+    // Also attempt once in case the dialog is already open when we run.
+    tryFill();
+    // Stop after 10 minutes to avoid persistent observation.
+    setTimeout(() => mo.disconnect(), 10 * 60 * 1000);
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", run, { once: true });
+    document.addEventListener("DOMContentLoaded", run);
   } else {
     run();
   }
