@@ -41,6 +41,7 @@ import {
   updateLaborLineTech,
   updatePartLine,
   updateRepairOrder,
+  updateROVehicleInfo,
 } from "../actions";
 import {
   generateShareToken,
@@ -247,6 +248,71 @@ export default async function RepairOrderDetailPage({
           />
         </div>
       )}
+
+      <Card className="mb-4">
+        <CardHeader title="Vehicle">
+          <Link
+            href={`/vehicles/${ro.vehicleId}`}
+            className="text-xs text-zinc-500 hover:text-zinc-900 font-normal underline"
+          >
+            Full vehicle record →
+          </Link>
+        </CardHeader>
+        <form
+          action={updateROVehicleInfo}
+          className="p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-end"
+        >
+          <input type="hidden" name="repairOrderId" value={ro.id} />
+          <input type="hidden" name="vehicleId" value={ro.vehicleId} />
+          <div className="md:col-span-5">
+            <Field label="VIN">
+              <Input
+                name="vin"
+                defaultValue={ro.vehicle.vin ?? ""}
+                placeholder="17-char VIN"
+                maxLength={17}
+                className="font-mono uppercase tracking-wider"
+              />
+            </Field>
+          </div>
+          <div className="md:col-span-3">
+            <Field label="License plate">
+              <Input
+                name="licensePlate"
+                defaultValue={ro.vehicle.licensePlate ?? ""}
+                placeholder="tag #"
+                className="uppercase"
+              />
+            </Field>
+          </div>
+          <div className="md:col-span-1">
+            <Field label="State">
+              <Input
+                name="licenseState"
+                defaultValue={ro.vehicle.licenseState ?? ""}
+                placeholder="NJ"
+                maxLength={2}
+                className="uppercase"
+              />
+            </Field>
+          </div>
+          <div className="md:col-span-2">
+            <Field label="Mileage (current)">
+              <Input
+                name="mileage"
+                defaultValue={ro.vehicle.mileage?.toString() ?? ""}
+                inputMode="numeric"
+                placeholder="miles"
+              />
+            </Field>
+          </div>
+          <div className="md:col-span-1">
+            <Button type="submit" variant="secondary" className="w-full">
+              Save
+            </Button>
+          </div>
+        </form>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <Card className="lg:col-span-2">

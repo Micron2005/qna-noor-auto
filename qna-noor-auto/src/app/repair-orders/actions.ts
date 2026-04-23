@@ -590,3 +590,49 @@ export async function deletePayment(id: string, repairOrderId: string) {
   revalidatePath("/repair-orders");
   revalidatePath("/");
 }
+
+/**
+ * Inline edit of vehicle identifiers from the RO page. Only touches
+ * VIN, license plate, license state, and mileage — the fields a tech
+ * might need to update at the service counter without clicking over
+ * to the full vehicle edit page.
+ */
+const VehicleInlineSchema = z.object({
+  repairOrderId: z.string().min(1),
+  vehicleId: z.string().min(1),
+  vin: z.string().optional().nullable(),
+  licensePlate: z.string().optional().nullable(),
+  licenseState: z.string().optional().nullable(),
+  mileage: z.string().optional().nullable(),
+});
+
+export async function updateROVehicleInfo(fd: FormData) {
+  const raw = Object.fromEntries(fd.entries()) as Record<string, string>;
+  const cleaned: Record<string, string | null> = {};
+  for (const [k, v] of Object.entries(raw)) cleaned[k] = v === "" ? null : v;
+  const parsed = VehicleInlineSchema.parse(cleaned);
+
+  // Guard: ensure the vehicleId actually belongs to the RO so a crafted
+  // form can't edit an unrelated vehicle via this endpoint.
+  const ro = await db.repairOrder.findUnique({
+    where: { id: parsed.repairOrderId },
+    select: { id: true, vehicleId: true },
+  });
+  if (!ro || ro.vehicleId !== parsed.vehicleId) {
+    redirect(`/repair-orders/${parsed.repairOrderId}`);
+  }
+
+  await db.vehicle.update({
+    where: { id: parsed.vehicleId },
+    data: {
+      vin: parsed.vin?.toUpperCase() ?? null,
+      licensePlate: parsed.licensePlate?.toUpperCase() ?? null,
+      licenseState: parsed.licenseState?.toUpperCase() ?? null,
+      mileage: parsed.mileage ? parseInt(parsed.mileage, 10) || null : null,
+    },
+  });
+
+  revalidatePath(`/repair-orders/${parsed.repairOrderId}`);
+  revalidatePath(`/vehicles/${parsed.vehicleId}`);
+  redirect(`/repair-orders/${parsed.repairOrderId}`);
+}
