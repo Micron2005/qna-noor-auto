@@ -28,19 +28,27 @@ export function SupplierLinks({ ctx, compact = false, label }: Props) {
   const [copied, setCopied] = useState<string | null>(null);
   const vehicleHint = formatVehicleHint(ctx);
 
-  async function openSupplier(s: SupplierDef) {
+  function openSupplier(s: SupplierDef) {
     const url = s.buildUrl(ctx);
-    if (s.needsVehicleContext && vehicleHint) {
-      try {
-        await navigator.clipboard.writeText(vehicleHint);
-        setCopied(s.id);
-        window.setTimeout(() => setCopied((prev) => (prev === s.id ? null : prev)), 4000);
-      } catch {
-        // Clipboard unavailable (HTTP, older Safari, etc.) — fall through
-        // and still open the tab; the user just won't get the auto-copy.
-      }
-    }
+    // Open the tab synchronously first: awaiting the clipboard write
+    // consumes the transient user-activation token in Firefox/Safari, so
+    // a later window.open would be treated as a popup and silently blocked.
     window.open(url, "_blank", "noopener,noreferrer");
+    if (s.needsVehicleContext && vehicleHint) {
+      void navigator.clipboard
+        ?.writeText(vehicleHint)
+        .then(() => {
+          setCopied(s.id);
+          window.setTimeout(
+            () => setCopied((prev) => (prev === s.id ? null : prev)),
+            4000,
+          );
+        })
+        .catch(() => {
+          // Clipboard unavailable (HTTP, older Safari, etc.) — the tab is
+          // already open, the user just won't get the auto-copy.
+        });
+    }
   }
 
   const btnClass = compact
