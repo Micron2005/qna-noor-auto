@@ -68,6 +68,42 @@ body {
 }
 .landing-content mark { border-radius: 0.15em; padding: 0.05em 0.15em; }
 
+/* ── Background patterns for landing page ── */
+.bg-pattern-dots {
+  background-image: radial-gradient(circle, currentColor 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: rgba(0, 0, 0, 0.06);
+}
+.bg-pattern-grid {
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.bg-pattern-diagonal {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    rgba(0, 0, 0, 0.03) 10px,
+    rgba(0, 0, 0, 0.03) 11px
+  );
+}
+.bg-pattern-cross {
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-position: center center;
+}
+.bg-pattern-waves {
+  background-image: url("data:image/svg+xml,%3Csvg width='100' height='20' viewBox='0 0 100 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M21.184 20c.357-.13.72-.264.888-.14 1.24.19 2.491.14 3.737-.14C27.929 19.33 30-.08 32.223.18c2.222.26 3.24 1.72 3.24 1.72s2.25-.43 4.97.19c2.72.62 3.29 2.1 3.29 2.1s2.07-.39 4.47.31c2.4.7 3.16 2.37 3.16 2.37s1.73-.18 3.83.63c2.1.81 2.73 2.44 2.73 2.44s1.49-.01 3.28.84c1.79.85 2.46 2.56 2.46 2.56s1.13.15 2.66 1.08c1.53.93 2.02 2.55 2.02 2.55s.88.32 2.16 1.31c1.28.99 1.72 2.62 1.72 2.62s.52.46 1.54 1.5c1.02 1.04 1.26 2.64 1.26 2.64H0s.58-1.56 1.63-2.59c1.05-1.03 1.8-1.48 1.8-1.48s.42-1.52 1.72-2.55c1.3-1.03 2.2-1.34 2.2-1.34s.59-1.56 1.88-2.53c1.29-.97 2.56-1.2 2.56-1.2s.7-1.58 2.14-2.48c1.44-.9 2.77-.98 2.77-.98s.98-1.56 2.55-2.38c1.57-.82 3.07-.72 3.07-.72' fill='none' stroke='rgba(0,0,0,0.04)' stroke-width='1'/%3E%3C/svg%3E");
+}
+.bg-pattern-chevron {
+  background-image: url("data:image/svg+xml,%3Csvg width='40' height='12' viewBox='0 0 40 12' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 6l20 6 20-6' fill='none' stroke='rgba(0,0,0,0.05)' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 40px 12px;
+}
+
 @media print {
   body {
     background: white;

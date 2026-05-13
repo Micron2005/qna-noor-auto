@@ -4,6 +4,7 @@ import { getAllSettings } from "@/lib/shop";
 import { isAuthenticated } from "@/lib/auth";
 import { getLandingContent } from "../actions";
 import { RichTextEditor } from "../RichTextEditor";
+import { ThemeCustomizer } from "../ThemeCustomizer";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function SiteEditPage() {
     redirect("/login?next=/site/edit");
   }
 
-  const [shop, html] = await Promise.all([
+  const [shop, { html, theme }] = await Promise.all([
     getAllSettings(),
     getLandingContent(),
   ]);
@@ -46,6 +47,7 @@ export default async function SiteEditPage() {
       </header>
 
       <section className="mx-auto max-w-6xl px-6 py-8">
+        <ThemeCustomizer initialTheme={theme} />
         <RichTextEditor initialHtml={html} />
       </section>
     </div>
