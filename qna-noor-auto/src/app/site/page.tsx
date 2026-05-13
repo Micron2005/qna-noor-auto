@@ -5,29 +5,66 @@ import { getLandingContent } from "./actions";
 
 export const dynamic = "force-dynamic";
 
+function patternClass(pattern: string): string {
+  switch (pattern) {
+    case "dots":
+      return "bg-pattern-dots";
+    case "grid":
+      return "bg-pattern-grid";
+    case "diagonal":
+      return "bg-pattern-diagonal";
+    case "cross":
+      return "bg-pattern-cross";
+    case "waves":
+      return "bg-pattern-waves";
+    case "chevron":
+      return "bg-pattern-chevron";
+    default:
+      return "";
+  }
+}
+
 export default async function SitePage() {
-  const [shop, html, authed] = await Promise.all([
+  const [shop, { html, theme }, authed] = await Promise.all([
     getAllSettings(),
     getLandingContent(),
     isAuthenticated(),
   ]);
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div
+      className={`min-h-screen ${patternClass(theme.bgPattern)}`}
+      style={{ backgroundColor: theme.pageBg }}
+    >
       {/* Top bar */}
-      <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white/95 backdrop-blur">
+      <header
+        className="sticky top-0 z-50 border-b backdrop-blur"
+        style={{
+          backgroundColor: theme.headerBg,
+          borderColor: theme.headerBorder,
+        }}
+      >
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div>
-            <div className="text-lg font-bold text-zinc-900">
+            <div
+              className="text-lg font-bold"
+              style={{ color: theme.headerText }}
+            >
               {shop.shopName}
             </div>
             {shop.shopAddress && (
-              <div className="text-xs text-zinc-600 whitespace-pre-line">
+              <div
+                className="text-xs whitespace-pre-line"
+                style={{ color: theme.headerText, opacity: 0.7 }}
+              >
                 {shop.shopAddress}
               </div>
             )}
             {(shop.shopPhone || shop.shopEmail) && (
-              <div className="text-xs text-zinc-600">
+              <div
+                className="text-xs"
+                style={{ color: theme.headerText, opacity: 0.7 }}
+              >
                 {[shop.shopPhone, shop.shopEmail].filter(Boolean).join(" · ")}
               </div>
             )}
@@ -37,7 +74,11 @@ export default async function SitePage() {
               <>
                 <Link
                   href="/site/edit"
-                  className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                  className="rounded-md px-4 py-2 text-sm font-medium"
+                  style={{
+                    backgroundColor: theme.buttonBg,
+                    color: theme.buttonText,
+                  }}
                 >
                   Edit page
                 </Link>
@@ -51,7 +92,11 @@ export default async function SitePage() {
             ) : (
               <Link
                 href="/login?next=/site/edit"
-                className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                className="rounded-md px-4 py-2 text-sm font-medium"
+                style={{
+                  backgroundColor: theme.buttonBg,
+                  color: theme.buttonText,
+                }}
               >
                 Login
               </Link>
@@ -61,21 +106,27 @@ export default async function SitePage() {
       </header>
 
       {/* Hero section with shop details */}
-      <section className="bg-zinc-900 text-white">
+      <section style={{ backgroundColor: theme.heroBg, color: theme.heroText }}>
         <div className="mx-auto max-w-6xl px-6 py-16 text-center">
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
             {shop.shopName}
           </h1>
           {shop.shopAddress && (
-            <p className="mt-4 text-lg text-zinc-300 whitespace-pre-line">
+            <p
+              className="mt-4 text-lg whitespace-pre-line"
+              style={{ color: theme.heroSubtext }}
+            >
               {shop.shopAddress}
             </p>
           )}
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-6 text-zinc-300">
+          <div
+            className="mt-4 flex flex-wrap items-center justify-center gap-6"
+            style={{ color: theme.heroSubtext }}
+          >
             {shop.shopPhone && (
               <a
                 href={`tel:${shop.shopPhone}`}
-                className="flex items-center gap-2 hover:text-white"
+                className="flex items-center gap-2 hover:opacity-80"
               >
                 <svg
                   className="h-4 w-4"
@@ -96,7 +147,7 @@ export default async function SitePage() {
             {shop.shopEmail && (
               <a
                 href={`mailto:${shop.shopEmail}`}
-                className="flex items-center gap-2 hover:text-white"
+                className="flex items-center gap-2 hover:opacity-80"
               >
                 <svg
                   className="h-4 w-4"
@@ -129,7 +180,7 @@ export default async function SitePage() {
           <div className="text-center py-20">
             <div className="text-zinc-400 text-lg">
               {authed
-                ? "No content yet. Click \"Edit page\" to start writing."
+                ? 'No content yet. Click "Edit page" to start writing.'
                 : ""}
             </div>
           </div>
@@ -137,8 +188,17 @@ export default async function SitePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-zinc-200 bg-white py-8">
-        <div className="mx-auto max-w-6xl px-6 text-center text-sm text-zinc-500">
+      <footer
+        className="border-t py-8"
+        style={{
+          backgroundColor: theme.footerBg,
+          borderColor: theme.footerBorder,
+        }}
+      >
+        <div
+          className="mx-auto max-w-6xl px-6 text-center text-sm"
+          style={{ color: theme.footerText }}
+        >
           {shop.shopName}
         </div>
       </footer>

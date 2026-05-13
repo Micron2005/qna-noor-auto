@@ -558,5 +558,6 @@ model LandingBlock {
 model LandingContent {
   id        String   @id @default("singleton")
   html      String   @default("")
+  theme     String   @default("{}")
   updatedAt DateTime @updatedAt
 }
