@@ -80,14 +80,14 @@ export function JobCard({
   addLaborAction: (fd: FormData) => void;
   addPartAction: (fd: FormData) => void;
   addFeeAction: (fd: FormData) => void;
-  updateLaborAction: (id: string, fd: FormData) => void;
-  updatePartAction: (id: string, fd: FormData) => void;
-  updateFeeAction: (id: string, fd: FormData) => void;
-  deleteLaborAction: (id: string) => void;
-  deletePartAction: (id: string) => void;
-  deleteFeeAction: (id: string) => void;
-  updateJobAction: (fd: FormData) => void;
-  deleteJobAction: () => void;
+  updateLaborAction: (id: string, roId: string, fd: FormData) => void;
+  updatePartAction: (id: string, roId: string, fd: FormData) => void;
+  updateFeeAction: (id: string, roId: string, fd: FormData) => void;
+  deleteLaborAction: (id: string, roId: string) => void;
+  deletePartAction: (id: string, roId: string) => void;
+  deleteFeeAction: (id: string, roId: string) => void;
+  updateJobAction?: (fd: FormData) => void;
+  deleteJobAction?: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [addingType, setAddingType] = useState<
@@ -117,7 +117,7 @@ export function JobCard({
           >
             {expanded ? "▼" : "▶"}
           </button>
-          {editingName ? (
+          {editingName && updateJobAction ? (
             <form
               action={(fd) => {
                 updateJobAction(fd);
@@ -144,9 +144,9 @@ export function JobCard({
             </form>
           ) : (
             <button
-              onClick={() => !isLocked && setEditingName(true)}
+              onClick={() => !isLocked && updateJobAction && setEditingName(true)}
               className="text-sm font-semibold text-zinc-900 hover:text-zinc-600"
-              title={isLocked ? undefined : "Click to rename"}
+              title={isLocked || !updateJobAction ? undefined : "Click to rename"}
             >
               {job.name}
             </button>
@@ -156,7 +156,7 @@ export function JobCard({
           <span className="text-sm font-medium text-zinc-700 tabular-nums">
             {formatMoney(jobTotal)}
           </span>
-          {!isLocked && (
+          {!isLocked && deleteJobAction && (
             <form action={deleteJobAction}>
               <button
                 type="submit"
@@ -192,8 +192,8 @@ export function JobCard({
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {job.laborLines.map((l) => {
-                    const updL = updateLaborAction.bind(null, l.id);
-                    const delL = deleteLaborAction.bind(null, l.id);
+                    const updL = updateLaborAction.bind(null, l.id, roId);
+                    const delL = deleteLaborAction.bind(null, l.id, roId);
                     if (isLocked) {
                       return (
                         <tr key={l.id}>
@@ -299,8 +299,8 @@ export function JobCard({
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {job.partLines.map((p) => {
-                    const updP = updatePartAction.bind(null, p.id);
-                    const delP = deletePartAction.bind(null, p.id);
+                    const updP = updatePartAction.bind(null, p.id, roId);
+                    const delP = deletePartAction.bind(null, p.id, roId);
                     if (isLocked) {
                       return (
                         <tr key={p.id}>
@@ -399,8 +399,8 @@ export function JobCard({
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {job.feeLines.map((f) => {
-                    const updF = updateFeeAction.bind(null, f.id);
-                    const delF = deleteFeeAction.bind(null, f.id);
+                    const updF = updateFeeAction.bind(null, f.id, roId);
+                    const delF = deleteFeeAction.bind(null, f.id, roId);
                     if (isLocked) {
                       return (
                         <tr key={f.id}>

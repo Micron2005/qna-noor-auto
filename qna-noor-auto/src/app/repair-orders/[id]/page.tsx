@@ -670,24 +670,12 @@ export default async function RepairOrderDetailPage({
           addLaborAction={addLabor}
           addPartAction={addPart}
           addFeeAction={addFee}
-          updateLaborAction={(lineId: string, fd: FormData) =>
-            updateLaborLine(lineId, ro.id, fd)
-          }
-          updatePartAction={(lineId: string, fd: FormData) =>
-            updatePartLine(lineId, ro.id, fd)
-          }
-          updateFeeAction={(lineId: string, fd: FormData) =>
-            updateFeeLine(lineId, ro.id, fd)
-          }
-          deleteLaborAction={(lineId: string) =>
-            deleteLaborLine(lineId, ro.id)
-          }
-          deletePartAction={(lineId: string) =>
-            deletePartLine(lineId, ro.id)
-          }
-          deleteFeeAction={(lineId: string) =>
-            deleteFeeLine(lineId, ro.id)
-          }
+          updateLaborAction={updateLaborLine}
+          updatePartAction={updatePartLine}
+          updateFeeAction={updateFeeLine}
+          deleteLaborAction={deleteLaborLine}
+          deletePartAction={deletePartLine}
+          deleteFeeAction={deleteFeeLine}
           updateJobAction={updateJob.bind(null, job.id, ro.id)}
           deleteJobAction={deleteJob.bind(null, job.id, ro.id)}
         />
@@ -711,26 +699,12 @@ export default async function RepairOrderDetailPage({
           addLaborAction={addLabor}
           addPartAction={addPart}
           addFeeAction={addFee}
-          updateLaborAction={(lineId: string, fd: FormData) =>
-            updateLaborLine(lineId, ro.id, fd)
-          }
-          updatePartAction={(lineId: string, fd: FormData) =>
-            updatePartLine(lineId, ro.id, fd)
-          }
-          updateFeeAction={(lineId: string, fd: FormData) =>
-            updateFeeLine(lineId, ro.id, fd)
-          }
-          deleteLaborAction={(lineId: string) =>
-            deleteLaborLine(lineId, ro.id)
-          }
-          deletePartAction={(lineId: string) =>
-            deletePartLine(lineId, ro.id)
-          }
-          deleteFeeAction={(lineId: string) =>
-            deleteFeeLine(lineId, ro.id)
-          }
-          updateJobAction={() => {}}
-          deleteJobAction={() => {}}
+          updateLaborAction={updateLaborLine}
+          updatePartAction={updatePartLine}
+          updateFeeAction={updateFeeLine}
+          deleteLaborAction={deleteLaborLine}
+          deletePartAction={deletePartLine}
+          deleteFeeAction={deleteFeeLine}
         />
       )}
 
