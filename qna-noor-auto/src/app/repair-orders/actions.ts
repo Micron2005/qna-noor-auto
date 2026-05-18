@@ -184,6 +184,67 @@ export async function deleteRepairOrder(id: string) {
   redirect("/");
 }
 
+// Jobs
+export async function addJob(repairOrderId: string, fd: FormData) {
+  await assertROEditable(repairOrderId);
+  const name = String(fd.get("name") ?? "").trim();
+  if (!name) return;
+  const max = await db.job.findFirst({
+    where: { repairOrderId },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
+  await db.job.create({
+    data: {
+      repairOrderId,
+      name,
+      sortOrder: (max?.sortOrder ?? 0) + 1,
+    },
+  });
+  revalidatePath(`/repair-orders/${repairOrderId}`);
+}
+
+export async function updateJob(id: string, repairOrderId: string, fd: FormData) {
+  await assertROEditable(repairOrderId);
+  const name = String(fd.get("name") ?? "").trim();
+  if (!name) return;
+  await db.job.update({ where: { id }, data: { name } });
+  revalidatePath(`/repair-orders/${repairOrderId}`);
+}
+
+export async function deleteJob(id: string, repairOrderId: string) {
+  await assertROEditable(repairOrderId);
+
+  const catalogParts = await db.partLine.findMany({
+    where: { jobId: id, partId: { not: null } },
+    select: { partId: true, quantity: true },
+  });
+
+  await db.$transaction(async (tx) => {
+    for (const pl of catalogParts) {
+      if (!pl.partId) continue;
+      await tx.part.update({
+        where: { id: pl.partId },
+        data: { qtyOnHand: { increment: pl.quantity } },
+      });
+      await tx.stockMove.create({
+        data: {
+          partId: pl.partId,
+          delta: pl.quantity,
+          reason: "RESTOCK_RO",
+          note: "Job deleted from RO",
+        },
+      });
+    }
+    await tx.job.delete({ where: { id } });
+  });
+
+  if (catalogParts.length > 0) {
+    revalidatePath("/inventory");
+  }
+  revalidatePath(`/repair-orders/${repairOrderId}`);
+}
+
 // Lines
 export async function addLaborLine(repairOrderId: string, fd: FormData) {
   await assertROEditable(repairOrderId);
@@ -191,6 +252,7 @@ export async function addLaborLine(repairOrderId: string, fd: FormData) {
   if (!description) return;
   const hours = parseFloat(String(fd.get("hours") ?? "0")) || 0;
   const technicianId = String(fd.get("technicianId") ?? "").trim() || null;
+  const jobId = String(fd.get("jobId") ?? "").trim() || null;
 
   // If no rate given, use tech's default rate; else shop default.
   let rate = parseFloat(String(fd.get("rate") ?? "0")) || 0;
@@ -213,6 +275,7 @@ export async function addLaborLine(repairOrderId: string, fd: FormData) {
   await db.laborLine.create({
     data: {
       repairOrderId,
+      jobId,
       description,
       hours,
       rate,
@@ -287,6 +350,7 @@ export async function deleteLaborLine(id: string, repairOrderId: string) {
 export async function addPartLine(repairOrderId: string, fd: FormData) {
   await assertROEditable(repairOrderId);
   const partId = String(fd.get("partId") ?? "").trim() || null;
+  const jobId = String(fd.get("jobId") ?? "").trim() || null;
 
   // If picking from the catalog, copy that part's details forward and skip
   // the free-text fields.
@@ -330,6 +394,7 @@ export async function addPartLine(repairOrderId: string, fd: FormData) {
   const line = await db.partLine.create({
     data: {
       repairOrderId,
+      jobId,
       partId: catalog?.id ?? null,
       description,
       partNumber,
@@ -368,6 +433,7 @@ export async function addFeeLine(repairOrderId: string, fd: FormData) {
   const description = String(fd.get("description") ?? "").trim();
   if (!description) return;
   const amount = parseFloat(String(fd.get("amount") ?? "0")) || 0;
+  const jobId = String(fd.get("jobId") ?? "").trim() || null;
 
   const max = await db.feeLine.findFirst({
     where: { repairOrderId },
@@ -377,6 +443,7 @@ export async function addFeeLine(repairOrderId: string, fd: FormData) {
   await db.feeLine.create({
     data: {
       repairOrderId,
+      jobId,
       description,
       amount: Math.round(amount * 100) / 100,
       sortOrder: (max?.sortOrder ?? 0) + 1,
