@@ -115,6 +115,7 @@ model RepairOrder {
   invoicedAt    DateTime?      // invoice generated
   paidAt        DateTime?      // payment received
   cancelledAt   DateTime?      // RO cancelled
+  clearedAt     DateTime?      // paid ticket cleared/closed out of active list
 
   mileageIn     Int?
   mileageOut    Int?

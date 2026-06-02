@@ -674,6 +674,79 @@ export async function deletePayment(id: string, repairOrderId: string) {
 }
 
 /**
+ * Undo an accidental "Paid" status. Reverts the RO back to INVOICED, clears
+ * the paid/closed/cleared timestamps, and removes any recorded payments so the
+ * full balance is owed again — i.e. the ticket is treated as never paid.
+ */
+export async function undoPaid(id: string) {
+  const ro = await db.repairOrder.findUnique({
+    where: { id },
+    select: { id: true, status: true, customerId: true },
+  });
+  if (!ro || ro.status !== "PAID") return;
+
+  await db.$transaction(async (tx) => {
+    await tx.payment.deleteMany({ where: { repairOrderId: id } });
+    await tx.repairOrder.update({
+      where: { id },
+      data: {
+        status: "INVOICED",
+        paidAt: null,
+        closedAt: null,
+        clearedAt: null,
+      },
+    });
+  });
+
+  revalidatePath(`/repair-orders/${id}`);
+  revalidatePath("/repair-orders");
+  revalidatePath(`/customers/${ro.customerId}`);
+  revalidatePath("/");
+}
+
+/**
+ * Mark a paid ticket as "cleared" — closed out of the active list. Only valid
+ * for PAID repair orders; cleared tickets move to a separate section but stay
+ * in the system.
+ */
+export async function clearRepairOrder(id: string) {
+  const ro = await db.repairOrder.findUnique({
+    where: { id },
+    select: { id: true, status: true, customerId: true },
+  });
+  if (!ro || ro.status !== "PAID") return;
+
+  await db.repairOrder.update({
+    where: { id },
+    data: { clearedAt: new Date() },
+  });
+
+  revalidatePath(`/repair-orders/${id}`);
+  revalidatePath("/repair-orders");
+  revalidatePath(`/customers/${ro.customerId}`);
+  revalidatePath("/");
+}
+
+/** Reverse a clear — bring a cleared paid ticket back into the active Paid list. */
+export async function unclearRepairOrder(id: string) {
+  const ro = await db.repairOrder.findUnique({
+    where: { id },
+    select: { id: true, status: true, customerId: true },
+  });
+  if (!ro || ro.status !== "PAID") return;
+
+  await db.repairOrder.update({
+    where: { id },
+    data: { clearedAt: null },
+  });
+
+  revalidatePath(`/repair-orders/${id}`);
+  revalidatePath("/repair-orders");
+  revalidatePath(`/customers/${ro.customerId}`);
+  revalidatePath("/");
+}
+
+/**
  * Inline edit of vehicle identifiers from the RO page. Only touches
  * VIN, license plate, license state, and mileage — the fields a tech
  * might need to update at the service counter without clicking over
