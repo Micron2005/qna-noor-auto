@@ -86,7 +86,10 @@ export default async function CustomerDetailPage({
       d.ro.status === "ESTIMATE" || d.ro.status === "IN_PROGRESS",
   );
   const paidROs = roData.filter(
-    (d) => d.ro.status === "PAID",
+    (d) => d.ro.status === "PAID" && d.ro.clearedAt == null,
+  );
+  const clearedROs = roData.filter(
+    (d) => d.ro.status === "PAID" && d.ro.clearedAt != null,
   );
   const cancelledROs = roData.filter(
     (d) => d.ro.status === "CANCELLED",
@@ -140,6 +143,16 @@ export default async function CustomerDetailPage({
       title: `Paid (${paidROs.length})`,
       items: paidROs.map(toItem),
     },
+    ...(clearedROs.length > 0
+      ? [
+          {
+            key: "cleared",
+            title: `Cleared (${clearedROs.length})`,
+            items: clearedROs.map(toItem),
+            defaultCollapsed: true,
+          },
+        ]
+      : []),
     ...(cancelledROs.length > 0
       ? [
           {

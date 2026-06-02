@@ -22,6 +22,7 @@ type Section = {
   title: string;
   items: ROItem[];
   showBalance?: boolean;
+  defaultCollapsed?: boolean;
 };
 
 export function SelectableROList({
@@ -32,6 +33,9 @@ export function SelectableROList({
   sections: Section[];
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(sections.filter((s) => s.defaultCollapsed).map((s) => s.key)),
+  );
   const [method, setMethod] = useState("CASH");
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -68,6 +72,15 @@ export function SelectableROList({
     setSelected(new Set());
     setConfirmingDelete(false);
     setResult(null);
+  }
+
+  function toggleCollapsed(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   async function handlePay() {
@@ -189,10 +202,29 @@ export function SelectableROList({
       {sections.map((section) => {
         const checkedCount = section.items.filter((i) => selected.has(i.roId)).length;
         const allChecked = section.items.length > 0 && checkedCount === section.items.length;
+        const collapsible = section.defaultCollapsed === true;
+        const isCollapsed = collapsed.has(section.key);
         return (
           <Card key={section.key} className="mb-4">
-            <CardHeader title={section.title}>
-              {section.items.length > 0 ? (
+            <CardHeader
+              title={
+                collapsible ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleCollapsed(section.key)}
+                    className="flex items-center gap-1.5 hover:text-zinc-600"
+                  >
+                    <span className="text-zinc-400 text-xs">
+                      {isCollapsed ? "▸" : "▾"}
+                    </span>
+                    {section.title}
+                  </button>
+                ) : (
+                  section.title
+                )
+              }
+            >
+              {section.items.length > 0 && !(collapsible && isCollapsed) ? (
                 <button
                   type="button"
                   onClick={() => toggleSection(section.items, allChecked)}
@@ -204,7 +236,7 @@ export function SelectableROList({
                 <span />
               )}
             </CardHeader>
-            {section.items.length === 0 ? (
+            {collapsible && isCollapsed ? null : section.items.length === 0 ? (
               <div className="p-6 text-sm text-zinc-500 text-center">None.</div>
             ) : (
               <table className="w-full text-sm">

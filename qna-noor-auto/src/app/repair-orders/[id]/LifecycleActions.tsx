@@ -1,5 +1,6 @@
 import { LinkButton, StatusBadge } from "@/components/ui";
 import { transitionRepairOrder } from "../actions";
+import { PaidActions } from "./PaidActions";
 
 type Status =
   | "ESTIMATE"
@@ -17,10 +18,12 @@ export function LifecycleActions({
   id,
   status,
   roNumber,
+  cleared = false,
 }: {
   id: string;
   status: string;
   roNumber: number;
+  cleared?: boolean;
 }) {
   const current = status as Status;
   const go = (target: Status) => transitionRepairOrder.bind(null, id, target);
@@ -28,6 +31,11 @@ export function LifecycleActions({
   return (
     <div className="flex items-center gap-2 flex-wrap justify-end">
       <StatusBadge status={current} />
+      {current === "PAID" && cleared && (
+        <span className="inline-flex items-center rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium px-2.5 py-0.5 border border-zinc-300">
+          Cleared
+        </span>
+      )}
 
       {current === "ESTIMATE" && (
         <>
@@ -106,15 +114,18 @@ export function LifecycleActions({
       )}
 
       {current === "PAID" && (
-        <LinkButton
-          href={`/repair-orders/${id}/invoice`}
-          variant="secondary"
-          size="sm"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Invoice PDF
-        </LinkButton>
+        <>
+          <LinkButton
+            href={`/repair-orders/${id}/invoice`}
+            variant="secondary"
+            size="sm"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Invoice PDF
+          </LinkButton>
+          <PaidActions id={id} cleared={cleared} />
+        </>
       )}
 
       {current === "CANCELLED" && (

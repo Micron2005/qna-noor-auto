@@ -243,6 +243,7 @@ export default async function RepairOrderDetailPage({
               id={ro.id}
               status={ro.status}
               roNumber={ro.roNumber}
+              cleared={ro.clearedAt != null}
             />
             {ro.shareToken && (
               <ShareActions
