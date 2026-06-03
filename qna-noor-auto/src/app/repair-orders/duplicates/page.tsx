@@ -231,6 +231,12 @@ export default async function DuplicatesPage({
           That repair order no longer exists.
         </div>
       )}
+      {error === "paid_locked" && (
+        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+          That repair order is paid and can&apos;t be deleted here — paid
+          tickets are shown for reference only.
+        </div>
+      )}
 
       {clusters.length === 0 ? (
         <Card className="p-6 text-sm text-zinc-600">
