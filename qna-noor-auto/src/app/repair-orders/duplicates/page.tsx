@@ -94,13 +94,31 @@ type Cluster = {
   sharedWords: string[];
 };
 
+// Identity key for "the same physical car". The same vehicle is often entered
+// as separate Vehicle records over time (especially for dealers with lots of
+// cars), so grouping strictly by vehicleId misses real duplicates. Prefer the
+// VIN, then license plate, and fall back to the vehicleId when neither is
+// recorded. Everything is scoped to the customer so two different customers
+// who happen to share a VIN/plate (e.g. a car traded between them) never get
+// merged into one group — the cluster header only shows a single customer, so
+// cross-customer merging would be misleading.
+function vehicleIdentityKey(ro: ROWithRelations): string {
+  const vin = ro.vehicle.vin?.replace(/\s/g, "").toUpperCase();
+  if (vin) return `cust:${ro.customerId}|vin:${vin}`;
+  const plate = ro.vehicle.licensePlate?.replace(/\s/g, "").toUpperCase();
+  if (plate) return `cust:${ro.customerId}|plate:${plate}`;
+  return `veh:${ro.vehicleId}`;
+}
+
 function clusterROs(ros: ROWithRelations[]): Cluster[] {
-  // Group by vehicleId first.
+  // Group by the car's identity (VIN / plate / vehicleId) so the same physical
+  // car spread across multiple Vehicle records still clusters together.
   const byVehicle = new Map<string, ROWithRelations[]>();
   for (const ro of ros) {
-    const list = byVehicle.get(ro.vehicleId) ?? [];
+    const key = vehicleIdentityKey(ro);
+    const list = byVehicle.get(key) ?? [];
     list.push(ro);
-    byVehicle.set(ro.vehicleId, list);
+    byVehicle.set(key, list);
   }
 
   const clusters: Cluster[] = [];
