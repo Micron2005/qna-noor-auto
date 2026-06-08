@@ -681,9 +681,11 @@ export async function deletePayment(id: string, repairOrderId: string) {
 export async function undoPaid(id: string) {
   const ro = await db.repairOrder.findUnique({
     where: { id },
-    select: { id: true, status: true, customerId: true },
+    select: { id: true, status: true, customerId: true, clearedAt: true },
   });
   if (!ro || ro.status !== "PAID") return;
+  // A cleared ticket is final — it can't be unpaid.
+  if (ro.clearedAt) return;
 
   await db.$transaction(async (tx) => {
     await tx.payment.deleteMany({ where: { repairOrderId: id } });
@@ -727,17 +729,26 @@ export async function clearRepairOrder(id: string) {
   revalidatePath("/");
 }
 
-/** Reverse a clear — bring a cleared paid ticket back into the active Paid list. */
-export async function unclearRepairOrder(id: string) {
+/**
+ * Revert an invoice back to a working repair order. Only valid for INVOICED
+ * tickets: the ticket returns to COMPLETED (editable again) and the invoice
+ * timestamps are cleared. From COMPLETED the only forward move is "Generate
+ * Invoice" again — there is no further revert, so this is a single step back.
+ */
+export async function revertInvoiceToRepairOrder(id: string) {
   const ro = await db.repairOrder.findUnique({
     where: { id },
     select: { id: true, status: true, customerId: true },
   });
-  if (!ro || ro.status !== "PAID") return;
+  if (!ro || ro.status !== "INVOICED") return;
 
   await db.repairOrder.update({
     where: { id },
-    data: { clearedAt: null },
+    data: {
+      status: "COMPLETED",
+      invoicedAt: null,
+      closedAt: null,
+    },
   });
 
   revalidatePath(`/repair-orders/${id}`);

@@ -1,5 +1,5 @@
 import { LinkButton, StatusBadge } from "@/components/ui";
-import { transitionRepairOrder } from "../actions";
+import { revertInvoiceToRepairOrder, transitionRepairOrder } from "../actions";
 import { PaidActions } from "./PaidActions";
 
 type Status =
@@ -105,6 +105,11 @@ export function LifecycleActions({
           >
             Invoice PDF
           </LinkButton>
+          <form action={revertInvoiceToRepairOrder.bind(null, id)}>
+            <button className="inline-flex items-center justify-center rounded-md font-medium h-9 px-4 text-sm bg-white text-zinc-700 border border-zinc-300 hover:border-zinc-400">
+              ← Revert to Repair Order
+            </button>
+          </form>
           <form action={go("PAID")}>
             <button className="inline-flex items-center justify-center rounded-md font-medium h-9 px-4 text-sm bg-green-600 text-white hover:bg-green-700">
               Mark Paid ✓

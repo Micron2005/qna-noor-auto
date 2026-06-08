@@ -1,12 +1,13 @@
 "use client";
 
 import { useTransition } from "react";
-import { clearRepairOrder, unclearRepairOrder, undoPaid } from "../actions";
+import { clearRepairOrder, undoPaid } from "../actions";
 
 /**
- * Action buttons shown on a PAID repair order: undo the paid status (with
- * confirmation, since it removes recorded payments) and clear / unclear the
- * ticket from the active list.
+ * Action buttons shown on a PAID repair order. While a ticket is only paid
+ * (not yet cleared) you can Undo Paid or Clear it. Once it is cleared the
+ * ticket is final — no actions are offered, so it can't be uncleared or
+ * unpaid.
  */
 export function PaidActions({
   id,
@@ -16,6 +17,9 @@ export function PaidActions({
   cleared: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
+
+  // Cleared tickets are locked: no undo, no unclear.
+  if (cleared) return null;
 
   function handleUndo() {
     if (
@@ -38,25 +42,14 @@ export function PaidActions({
       >
         Undo Paid
       </button>
-      {cleared ? (
-        <button
-          type="button"
-          onClick={() => startTransition(() => unclearRepairOrder(id))}
-          disabled={isPending}
-          className="inline-flex items-center justify-center rounded-md font-medium h-9 px-4 text-sm bg-white text-zinc-700 border border-zinc-300 hover:border-zinc-400 disabled:opacity-50"
-        >
-          Unclear
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => startTransition(() => clearRepairOrder(id))}
-          disabled={isPending}
-          className="inline-flex items-center justify-center rounded-md font-medium h-9 px-4 text-sm bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
-        >
-          Clear Ticket
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => startTransition(() => clearRepairOrder(id))}
+        disabled={isPending}
+        className="inline-flex items-center justify-center rounded-md font-medium h-9 px-4 text-sm bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
+      >
+        Clear Ticket
+      </button>
     </>
   );
 }
