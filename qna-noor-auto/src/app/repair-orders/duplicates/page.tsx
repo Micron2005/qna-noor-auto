@@ -97,11 +97,14 @@ type Cluster = {
 // Identity key for "the same physical car". The same vehicle is often entered
 // as separate Vehicle records over time (especially for dealers with lots of
 // cars), so grouping strictly by vehicleId misses real duplicates. Prefer the
-// VIN (globally unique), then license plate scoped to the customer, and only
-// fall back to the vehicleId when neither is recorded.
+// VIN, then license plate, and fall back to the vehicleId when neither is
+// recorded. Everything is scoped to the customer so two different customers
+// who happen to share a VIN/plate (e.g. a car traded between them) never get
+// merged into one group — the cluster header only shows a single customer, so
+// cross-customer merging would be misleading.
 function vehicleIdentityKey(ro: ROWithRelations): string {
   const vin = ro.vehicle.vin?.replace(/\s/g, "").toUpperCase();
-  if (vin) return `vin:${vin}`;
+  if (vin) return `cust:${ro.customerId}|vin:${vin}`;
   const plate = ro.vehicle.licensePlate?.replace(/\s/g, "").toUpperCase();
   if (plate) return `cust:${ro.customerId}|plate:${plate}`;
   return `veh:${ro.vehicleId}`;
