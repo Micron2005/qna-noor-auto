@@ -124,7 +124,15 @@ export async function deleteBusiness(formData: FormData) {
     back({ error: "Type the exact business name to confirm deletion." });
   }
 
-  await db.organization.delete({ where: { id: orgId } });
+  // RepairOrder -> Customer/Vehicle FKs are ON DELETE RESTRICT, so the cascade
+  // from Organization -> Customer would fail while repair orders still point at
+  // those customers. Delete the org's repair orders first (their own children
+  // cascade), then drop the org (cascading the rest). One transaction so a
+  // failure can't leave a half-deleted business.
+  await db.$transaction([
+    db.repairOrder.deleteMany({ where: { orgId } }),
+    db.organization.delete({ where: { id: orgId } }),
+  ]);
   revalidatePath("/admin");
   back({ saved: "deleted" });
 }
