@@ -21,7 +21,7 @@ model Customer {
   id          String  @id @default(cuid())
   // External id from a prior system (Identifix export Id). Lets a re-run of
   // CSV import update the existing record instead of creating a duplicate.
-  externalId  String? @unique
+  externalId  String?
   // INDIVIDUAL | BUSINESS — controls which tab the record lives in and how
   // A/R is split on the dashboard.
   type        String  @default("INDIVIDUAL")
@@ -51,6 +51,7 @@ model Customer {
   orgId        String
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
+  @@unique([orgId, externalId])
   @@index([lastName, firstName])
   @@index([type])
   @@index([orgId])
@@ -60,7 +61,7 @@ model Vehicle {
   id         String   @id @default(cuid())
   // External id from a prior system (Identifix vehicle Id). Lets a re-run of
   // CSV import update the existing record instead of creating a duplicate.
-  externalId String?  @unique
+  externalId String?
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
@@ -94,6 +95,7 @@ model Vehicle {
   orgId        String
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
+  @@unique([orgId, externalId])
   @@index([customerId])
   @@index([vin])
   @@index([licensePlate])
@@ -102,7 +104,7 @@ model Vehicle {
 
 model RepairOrder {
   id       String @id @default(cuid())
-  roNumber Int    @unique
+  roNumber Int
 
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id])
@@ -156,6 +158,7 @@ model RepairOrder {
   orgId        String
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
+  @@unique([orgId, roNumber])
   @@index([customerId])
   @@index([vehicleId])
   @@index([status])
@@ -305,7 +308,7 @@ model FeeLine {
 // Free-form partLines (not tied to a Part) continue to work; the catalog is optional.
 model Part {
   id          String  @id @default(cuid())
-  partNumber  String? @unique
+  partNumber  String?
   name        String
   description String?
   source      String? // default supplier / vendor
@@ -336,6 +339,7 @@ model Part {
   orgId        String
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
+  @@unique([orgId, partNumber])
   @@index([name])
   @@index([archived])
   @@index([orgId])
