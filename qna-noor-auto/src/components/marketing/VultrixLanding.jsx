@@ -22,7 +22,7 @@ import VultrixAssistant from "./VultrixAssistant";
 ---------------------------------------------------------------------------- */
 const SITE = {
   brand: "Vultrix",
-  owner: "M.S.A.M Industries",
+  owner: "M.S.A.M Enterprise",
   tagline: "Shop management powered by Vultrix",
   price: 45,
   trialDays: 14,
