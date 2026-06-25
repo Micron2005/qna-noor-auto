@@ -537,6 +537,14 @@ export async function updatePartLine(
       if (!Number.isNaN(c) && c >= 0) data.costPrice = c;
     }
   }
+  if (fd.has("partNumber")) {
+    const pn = String(fd.get("partNumber") ?? "").trim();
+    data.partNumber = pn === "" ? null : pn;
+  }
+  if (fd.has("source")) {
+    const src = String(fd.get("source") ?? "").trim();
+    data.source = src === "" ? null : src;
+  }
   if (Object.keys(data).length === 0) return;
   await db.partLine.updateMany({ where: { id, repairOrderId }, data });
   revalidatePath(`/repair-orders/${repairOrderId}`);

@@ -14,6 +14,29 @@ import { RemoteSaveButton } from "@/components/RemoteSaveButton";
 import { AutoGrowTextarea } from "@/components/AutoGrowTextarea";
 import { formatMoney } from "@/lib/utils";
 
+/**
+ * A compact labeled field used inside the editable line "cards". Wrapping
+ * fields in flex-wrap (instead of fixed table columns) is what keeps the row
+ * from overlapping on narrow widths.
+ */
+function LineField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+
 type LaborLineData = {
   id: string;
   description: string;
@@ -263,106 +286,116 @@ export function JobCard({
               <div className="text-xs uppercase tracking-wider text-zinc-400 mb-1">
                 Labor
               </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-zinc-500">
-                    <th className="py-1 font-medium">Description</th>
-                    <th className="py-1 font-medium w-32">Tech</th>
-                    <th className="py-1 font-medium text-right w-16">Hours</th>
-                    <th className="py-1 font-medium text-right w-24">Rate</th>
-                    <th className="py-1 font-medium text-right w-24">Amount</th>
-                    <th className="py-1 w-16"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
+              {isLocked ? (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-zinc-500">
+                      <th className="py-1 font-medium">Description</th>
+                      <th className="py-1 font-medium w-32">Tech</th>
+                      <th className="py-1 font-medium text-right w-16">Hours</th>
+                      <th className="py-1 font-medium text-right w-24">Rate</th>
+                      <th className="py-1 font-medium text-right w-24">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {job.laborLines.map((l) => (
+                      <tr key={l.id}>
+                        <td className="py-1.5">{l.description}</td>
+                        <td className="py-1.5 text-zinc-600 text-xs">
+                          {l.technician?.name ?? "—"}
+                        </td>
+                        <td className="py-1.5 text-right">{l.hours}</td>
+                        <td className="py-1.5 text-right">{formatMoney(l.rate)}</td>
+                        <td className="py-1.5 text-right">
+                          {formatMoney(l.hours * l.rate)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="space-y-2">
                   {job.laborLines.map((l) => {
                     const updL = updateLaborAction.bind(null, l.id, roId);
                     const delL = deleteLaborAction.bind(null, l.id, roId);
-                    if (isLocked) {
-                      return (
-                        <tr key={l.id}>
-                          <td className="py-1.5">{l.description}</td>
-                          <td className="py-1.5 text-zinc-600 text-xs">
-                            {l.technician?.name ?? "—"}
-                          </td>
-                          <td className="py-1.5 text-right">{l.hours}</td>
-                          <td className="py-1.5 text-right">{formatMoney(l.rate)}</td>
-                          <td className="py-1.5 text-right">
-                            {formatMoney(l.hours * l.rate)}
-                          </td>
-                          <td></td>
-                        </tr>
-                      );
-                    }
                     return (
-                      <tr key={l.id}>
-                        <td className="py-1">
-                          <form
-                            id={`labor-${l.id}`}
-                            action={updL}
-                            className="contents"
-                          />
-                          <AutoGrowTextarea
-                            form={`labor-${l.id}`}
-                            name="description"
-                            defaultValue={l.description}
-                            className="w-full"
-                          />
-                        </td>
-                        <td className="py-1 px-1">
-                          <TechLineSelect
-                            laborLineId={l.id}
-                            repairOrderId={roId}
-                            currentId={l.technicianId}
-                            currentName={l.technician?.name ?? null}
-                            techs={activeTechs}
-                          />
-                        </td>
-                        <td className="py-1 text-right">
-                          <Input
-                            form={`labor-${l.id}`}
-                            name="hours"
-                            inputMode="decimal"
-                            defaultValue={String(l.hours)}
-                            className="w-16 text-right"
-                          />
-                        </td>
-                        <td className="py-1 text-right">
-                          <Input
-                            form={`labor-${l.id}`}
-                            name="rate"
-                            inputMode="decimal"
-                            defaultValue={String(l.rate)}
-                            className="w-20 text-right"
-                          />
-                        </td>
-                        <td className="py-1 text-right text-zinc-700">
-                          {formatMoney(l.hours * l.rate)}
-                        </td>
-                        <td className="py-1 whitespace-nowrap text-right">
-                          <RemoteSaveButton
-                            formId={`labor-${l.id}`}
-                            action={updL}
-                            variant="subtle"
-                            size="sm"
-                            className="mr-1 h-7 px-2 text-xs"
-                          >
-                            Save
-                          </RemoteSaveButton>
-                          <form action={delL} className="inline">
-                            <button
-                              type="submit"
-                              className="text-zinc-400 hover:text-red-600 text-sm"
+                      <div
+                        key={l.id}
+                        className="rounded-lg border border-zinc-200 p-3"
+                      >
+                        <form
+                          id={`labor-${l.id}`}
+                          action={updL}
+                          className="contents"
+                        />
+                        <AutoGrowTextarea
+                          form={`labor-${l.id}`}
+                          name="description"
+                          defaultValue={l.description}
+                          className="w-full"
+                        />
+                        <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+                          <LineField label="Tech">
+                            <TechLineSelect
+                              laborLineId={l.id}
+                              repairOrderId={roId}
+                              currentId={l.technicianId}
+                              currentName={l.technician?.name ?? null}
+                              techs={activeTechs}
+                            />
+                          </LineField>
+                          <LineField label="Hours">
+                            <Input
+                              form={`labor-${l.id}`}
+                              name="hours"
+                              inputMode="decimal"
+                              defaultValue={String(l.hours)}
+                              className="w-20 text-right"
+                            />
+                          </LineField>
+                          <LineField label="Rate">
+                            <Input
+                              form={`labor-${l.id}`}
+                              name="rate"
+                              inputMode="decimal"
+                              defaultValue={String(l.rate)}
+                              className="w-24 text-right"
+                            />
+                          </LineField>
+                          <div className="ml-auto flex items-end gap-3">
+                            <div className="text-right">
+                              <div className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                                Amount
+                              </div>
+                              <div className="text-sm font-medium tabular-nums text-zinc-800">
+                                {formatMoney(l.hours * l.rate)}
+                              </div>
+                            </div>
+                            <RemoteSaveButton
+                              formId={`labor-${l.id}`}
+                              action={updL}
+                              variant="subtle"
+                              size="sm"
+                              className="h-8 px-3 text-xs"
                             >
-                              ×
-                            </button>
-                          </form>
-                        </td>
-                      </tr>
+                              Save
+                            </RemoteSaveButton>
+                            <form action={delL} className="inline">
+                              <button
+                                type="submit"
+                                aria-label="Delete labor line"
+                                className="px-1 text-base text-zinc-400 hover:text-red-600"
+                              >
+                                ×
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -372,116 +405,145 @@ export function JobCard({
               <div className="text-xs uppercase tracking-wider text-zinc-400 mb-1">
                 Parts
               </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-zinc-500">
-                    <th className="py-1 font-medium">Description</th>
-                    <th className="py-1 font-medium w-20">Part #</th>
-                    <th className="py-1 font-medium text-right w-12">Qty</th>
-                    <th className="py-1 font-medium text-right w-20">Cost</th>
-                    <th className="py-1 font-medium text-right w-20">List Price</th>
-                    <th className="py-1 font-medium text-right w-24">Amount</th>
-                    <th className="py-1 w-16"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
+              {isLocked ? (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-zinc-500">
+                      <th className="py-1 font-medium">Description</th>
+                      <th className="py-1 font-medium w-20">Part #</th>
+                      <th className="py-1 font-medium w-24">Source</th>
+                      <th className="py-1 font-medium text-right w-12">Qty</th>
+                      <th className="py-1 font-medium text-right w-20">Cost</th>
+                      <th className="py-1 font-medium text-right w-20">List Price</th>
+                      <th className="py-1 font-medium text-right w-24">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {job.partLines.map((p) => (
+                      <tr key={p.id}>
+                        <td className="py-1.5">{p.description}</td>
+                        <td className="py-1.5 font-mono text-xs text-zinc-600">
+                          {p.partNumber ?? "—"}
+                        </td>
+                        <td className="py-1.5 text-xs text-zinc-600">
+                          {p.source ?? "—"}
+                        </td>
+                        <td className="py-1.5 text-right">{p.quantity}</td>
+                        <td className="py-1.5 text-right text-zinc-500">
+                          {p.costPrice != null ? formatMoney(p.costPrice) : "—"}
+                        </td>
+                        <td className="py-1.5 text-right">
+                          {formatMoney(p.unitPrice)}
+                        </td>
+                        <td className="py-1.5 text-right">
+                          {formatMoney(p.quantity * p.unitPrice)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="space-y-2">
                   {job.partLines.map((p) => {
                     const updP = updatePartAction.bind(null, p.id, roId);
                     const delP = deletePartAction.bind(null, p.id, roId);
-                    if (isLocked) {
-                      return (
-                        <tr key={p.id}>
-                          <td className="py-1.5">{p.description}</td>
-                          <td className="py-1.5 font-mono text-xs text-zinc-600">
-                            {p.partNumber ?? "—"}
-                          </td>
-                          <td className="py-1.5 text-right">{p.quantity}</td>
-                          <td className="py-1.5 text-right text-zinc-500">
-                            {p.costPrice != null ? formatMoney(p.costPrice) : "—"}
-                          </td>
-                          <td className="py-1.5 text-right">
-                            {formatMoney(p.unitPrice)}
-                          </td>
-                          <td className="py-1.5 text-right">
-                            {formatMoney(p.quantity * p.unitPrice)}
-                          </td>
-                          <td></td>
-                        </tr>
-                      );
-                    }
                     return (
-                      <tr key={p.id}>
-                        <td className="py-1">
-                          <form
-                            id={`part-${p.id}`}
-                            action={updP}
-                            className="contents"
-                          />
-                          <AutoGrowTextarea
-                            form={`part-${p.id}`}
-                            name="description"
-                            defaultValue={p.description}
-                            className="w-full"
-                          />
-                        </td>
-                        <td className="py-1 font-mono text-xs text-zinc-600">
-                          {p.partNumber ?? "—"}
-                        </td>
-                        <td className="py-1 text-right">
-                          <Input
-                            form={`part-${p.id}`}
-                            name="quantity"
-                            inputMode="decimal"
-                            defaultValue={String(p.quantity)}
-                            className="w-12 text-right"
-                          />
-                        </td>
-                        <td className="py-1 text-right">
-                          <Input
-                            form={`part-${p.id}`}
-                            name="costPrice"
-                            inputMode="decimal"
-                            defaultValue={p.costPrice != null ? String(p.costPrice) : ""}
-                            placeholder="—"
-                            className="w-20 text-right"
-                          />
-                        </td>
-                        <td className="py-1 text-right">
-                          <Input
-                            form={`part-${p.id}`}
-                            name="unitPrice"
-                            inputMode="decimal"
-                            defaultValue={String(p.unitPrice)}
-                            className="w-20 text-right"
-                          />
-                        </td>
-                        <td className="py-1 text-right text-zinc-700">
-                          {formatMoney(p.quantity * p.unitPrice)}
-                        </td>
-                        <td className="py-1 whitespace-nowrap text-right">
-                          <RemoteSaveButton
-                            formId={`part-${p.id}`}
-                            action={updP}
-                            variant="subtle"
-                            size="sm"
-                            className="mr-1 h-7 px-2 text-xs"
-                          >
-                            Save
-                          </RemoteSaveButton>
-                          <form action={delP} className="inline">
-                            <button
-                              type="submit"
-                              className="text-zinc-400 hover:text-red-600 text-sm"
+                      <div
+                        key={p.id}
+                        className="rounded-lg border border-zinc-200 p-3"
+                      >
+                        <form
+                          id={`part-${p.id}`}
+                          action={updP}
+                          className="contents"
+                        />
+                        <AutoGrowTextarea
+                          form={`part-${p.id}`}
+                          name="description"
+                          defaultValue={p.description}
+                          className="w-full"
+                        />
+                        <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+                          <LineField label="Part #">
+                            <Input
+                              form={`part-${p.id}`}
+                              name="partNumber"
+                              defaultValue={p.partNumber ?? ""}
+                              placeholder="—"
+                              className="w-28"
+                            />
+                          </LineField>
+                          <LineField label="Source">
+                            <Input
+                              form={`part-${p.id}`}
+                              name="source"
+                              defaultValue={p.source ?? ""}
+                              placeholder="NAPA, in stock…"
+                              className="w-36"
+                            />
+                          </LineField>
+                          <LineField label="Qty">
+                            <Input
+                              form={`part-${p.id}`}
+                              name="quantity"
+                              inputMode="decimal"
+                              defaultValue={String(p.quantity)}
+                              className="w-16 text-right"
+                            />
+                          </LineField>
+                          <LineField label="Cost">
+                            <Input
+                              form={`part-${p.id}`}
+                              name="costPrice"
+                              inputMode="decimal"
+                              defaultValue={p.costPrice != null ? String(p.costPrice) : ""}
+                              placeholder="—"
+                              className="w-20 text-right"
+                            />
+                          </LineField>
+                          <LineField label="List price">
+                            <Input
+                              form={`part-${p.id}`}
+                              name="unitPrice"
+                              inputMode="decimal"
+                              defaultValue={String(p.unitPrice)}
+                              className="w-24 text-right"
+                            />
+                          </LineField>
+                          <div className="ml-auto flex items-end gap-3">
+                            <div className="text-right">
+                              <div className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                                Amount
+                              </div>
+                              <div className="text-sm font-medium tabular-nums text-zinc-800">
+                                {formatMoney(p.quantity * p.unitPrice)}
+                              </div>
+                            </div>
+                            <RemoteSaveButton
+                              formId={`part-${p.id}`}
+                              action={updP}
+                              variant="subtle"
+                              size="sm"
+                              className="h-8 px-3 text-xs"
                             >
-                              ×
-                            </button>
-                          </form>
-                        </td>
-                      </tr>
+                              Save
+                            </RemoteSaveButton>
+                            <form action={delP} className="inline">
+                              <button
+                                type="submit"
+                                aria-label="Delete part line"
+                                className="px-1 text-base text-zinc-400 hover:text-red-600"
+                              >
+                                ×
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -491,77 +553,82 @@ export function JobCard({
               <div className="text-xs uppercase tracking-wider text-zinc-400 mb-1">
                 Fees
               </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-zinc-500">
-                    <th className="py-1 font-medium">Description</th>
-                    <th className="py-1 font-medium text-right w-24">Amount</th>
-                    <th className="py-1 w-16"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
+              {isLocked ? (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-zinc-500">
+                      <th className="py-1 font-medium">Description</th>
+                      <th className="py-1 font-medium text-right w-24">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {job.feeLines.map((f) => (
+                      <tr key={f.id}>
+                        <td className="py-1.5">{f.description}</td>
+                        <td className="py-1.5 text-right">
+                          {formatMoney(f.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="space-y-2">
                   {job.feeLines.map((f) => {
                     const updF = updateFeeAction.bind(null, f.id, roId);
                     const delF = deleteFeeAction.bind(null, f.id, roId);
-                    if (isLocked) {
-                      return (
-                        <tr key={f.id}>
-                          <td className="py-1.5">{f.description}</td>
-                          <td className="py-1.5 text-right">
-                            {formatMoney(f.amount)}
-                          </td>
-                          <td></td>
-                        </tr>
-                      );
-                    }
                     return (
-                      <tr key={f.id}>
-                        <td className="py-1">
-                          <form
-                            id={`fee-${f.id}`}
-                            action={updF}
-                            className="contents"
-                          />
-                          <AutoGrowTextarea
-                            form={`fee-${f.id}`}
-                            name="description"
-                            defaultValue={f.description}
-                            className="w-full"
-                          />
-                        </td>
-                        <td className="py-1 text-right">
-                          <Input
-                            form={`fee-${f.id}`}
-                            name="amount"
-                            inputMode="decimal"
-                            defaultValue={String(f.amount)}
-                            className="w-20 text-right"
-                          />
-                        </td>
-                        <td className="py-1 whitespace-nowrap text-right">
-                          <RemoteSaveButton
-                            formId={`fee-${f.id}`}
-                            action={updF}
-                            variant="subtle"
-                            size="sm"
-                            className="mr-1 h-7 px-2 text-xs"
-                          >
-                            Save
-                          </RemoteSaveButton>
-                          <form action={delF} className="inline">
-                            <button
-                              type="submit"
-                              className="text-zinc-400 hover:text-red-600 text-sm"
+                      <div
+                        key={f.id}
+                        className="rounded-lg border border-zinc-200 p-3"
+                      >
+                        <form
+                          id={`fee-${f.id}`}
+                          action={updF}
+                          className="contents"
+                        />
+                        <AutoGrowTextarea
+                          form={`fee-${f.id}`}
+                          name="description"
+                          defaultValue={f.description}
+                          className="w-full"
+                        />
+                        <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+                          <LineField label="Amount ($)">
+                            <Input
+                              form={`fee-${f.id}`}
+                              name="amount"
+                              inputMode="decimal"
+                              defaultValue={String(f.amount)}
+                              className="w-28 text-right"
+                            />
+                          </LineField>
+                          <div className="ml-auto flex items-end gap-3">
+                            <RemoteSaveButton
+                              formId={`fee-${f.id}`}
+                              action={updF}
+                              variant="subtle"
+                              size="sm"
+                              className="h-8 px-3 text-xs"
                             >
-                              ×
-                            </button>
-                          </form>
-                        </td>
-                      </tr>
+                              Save
+                            </RemoteSaveButton>
+                            <form action={delF} className="inline">
+                              <button
+                                type="submit"
+                                aria-label="Delete fee line"
+                                className="px-1 text-base text-zinc-400 hover:text-red-600"
+                              >
+                                ×
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
           )}
 
