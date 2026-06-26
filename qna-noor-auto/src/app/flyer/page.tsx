@@ -54,7 +54,8 @@ async function resolveOrigin(): Promise<string> {
 /**
  * Printable marketing flyer / sell-sheet for selling Vultrix to other shops.
  * Restricted to the platform owner (SUPERADMIN) and the owner's own shop org —
- * tenant shops must never see it. Includes a QR code to the free-trial signup.
+ * tenant shops must never see it. Includes a QR code to the marketing
+ * landing page (homepage), where prospects can read the pitch and sign up.
  */
 export default async function FlyerPage() {
   const user = await requireUser();
@@ -64,10 +65,12 @@ export default async function FlyerPage() {
 
   const origin = await resolveOrigin();
   const base = origin || "https://vultrix.net";
-  const signupUrl = `${base}/signup`;
+  // QR points to the public marketing landing page (homepage), not the signup
+  // form — prospects scan, read the pitch, then sign up from there.
+  const landingUrl = base;
   const siteLabel = base.replace(/^https?:\/\//, "");
 
-  const qrSvg = await QRCode.toString(signupUrl, {
+  const qrSvg = await QRCode.toString(landingUrl, {
     type: "svg",
     margin: 1,
     errorCorrectionLevel: "M",
@@ -154,7 +157,7 @@ export default async function FlyerPage() {
               </div>
               <div
                 className="mx-auto mt-4 w-40 [&_svg]:h-full [&_svg]:w-full"
-                aria-label="Scan to sign up"
+                aria-label="Scan to visit the Vultrix site"
                 dangerouslySetInnerHTML={{ __html: qrSvg }}
               />
               <div className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-zinc-700">
