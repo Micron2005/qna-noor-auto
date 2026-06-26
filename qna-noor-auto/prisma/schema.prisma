@@ -144,6 +144,11 @@ model RepairOrder {
   estimateDeclinedAt   DateTime?
   customerResponseNote String?
 
+  // Customer signature captured at approval (useful for insurance claims).
+  signatureDataUrl String?   // base64 PNG of the drawn signature
+  signatureName    String?   // typed name of the signer
+  signedAt         DateTime? // when the signature was captured
+
   jobs              Job[]
   laborLines        LaborLine[]
   partLines         PartLine[]

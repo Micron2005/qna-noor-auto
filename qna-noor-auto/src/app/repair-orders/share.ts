@@ -81,11 +81,23 @@ export async function approveEstimate(token: string, fd: FormData) {
   const note =
     String(fd.get("customerResponseNote") ?? "").trim() || null;
 
+  // Optional customer signature (insurance claims). Stored only when a real
+  // drawn PNG data URL is present; capped to avoid oversized payloads.
+  const sigName = String(fd.get("signatureName") ?? "").trim() || null;
+  const sigData = String(fd.get("signatureDataUrl") ?? "").trim();
+  const hasSignature =
+    sigData.startsWith("data:image/") && sigData.length <= 500_000;
+
   const now = new Date();
   const data: Record<string, unknown> = {
     approvedAt: now,
     customerResponseNote: note,
   };
+  if (hasSignature) {
+    data.signatureDataUrl = sigData;
+    data.signatureName = sigName;
+    data.signedAt = now;
+  }
   // Flip ESTIMATE → IN_PROGRESS on approval, record startedAt.
   if (ro.status === "ESTIMATE") {
     data.status = "IN_PROGRESS";

@@ -11,6 +11,7 @@ import {
   vehicleLabel,
 } from "@/lib/utils";
 import { approveEstimate, declineEstimate, approveJob, declineJob } from "../../repair-orders/share";
+import { SignaturePad } from "./SignaturePad";
 
 export const dynamic = "force-dynamic";
 
@@ -630,6 +631,7 @@ export default async function PublicEstimatePage({
                   className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   placeholder="Any comments or questions?"
                 />
+                <SignaturePad />
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="submit"
